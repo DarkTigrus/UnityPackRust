@@ -1,0 +1,6 @@
+[package]
+name = "UnityPackRust"
+version = "0.1.0"
+authors = ["Istvan Fehervari <gooksl@gmail.com>"]
+
+[dependencies]
