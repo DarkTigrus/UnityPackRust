@@ -1,6 +1,8 @@
 [package]
-name = "UnityPackRust"
+name = "Unitypack_rust"
 version = "0.1.0"
 authors = ["Istvan Fehervari <gooksl@gmail.com>"]
 
 [dependencies]
+lz4 = "*"
+lzma = "*"
