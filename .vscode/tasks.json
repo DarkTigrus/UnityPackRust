@@ -1,0 +1,20 @@
+{
+    "version": "0.1.0",
+    "command": "cargo",
+    "isShellCommand": true,
+    "args": [],
+    "showOutput": "always",
+    "suppressTaskName": true,
+    "tasks": [
+        {
+            "taskName": "cargo build",
+            "isBuildCommand": true,
+            "args": ["build"]
+        },
+        {
+            "taskName": "cargo test",
+            "isTestCommand": true,
+            "args": ["test"]
+        }
+    ]
+}

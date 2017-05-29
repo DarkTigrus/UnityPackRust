@@ -1,0 +1,6 @@
+
+[{
+    "key": "shift+cmd+t",
+    "command": "workbench.action.tasks.runTask",
+    "args": "cargo test"
+}]
