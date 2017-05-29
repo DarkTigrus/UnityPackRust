@@ -1,8 +1,11 @@
 [package]
-name = "Unitypack_rust"
+name = "unitypack"
 version = "0.1.0"
 authors = ["Istvan Fehervari <gooksl@gmail.com>"]
 
 [dependencies]
+byteorder = "1"
 lz4 = "*"
 lzma = "*"
+custom_derive = "0.1.7"
+enum_derive = "0.1.7"
