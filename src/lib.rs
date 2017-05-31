@@ -9,6 +9,7 @@ extern crate byteorder;
 extern crate custom_derive;
 #[macro_use]
 extern crate enum_derive;
+extern crate lz4;
 
 pub mod assetbundle;
 mod binaryreader;
