@@ -8,10 +8,10 @@ use std::fs::File;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::BufReader;
-use std::io::Cursor;
 use std::io::Read;
 use binaryreader::*;
-use lz4::Decoder;
+use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
+use lz4_compress;
 
 custom_derive! {
     #[derive(Debug, EnumFromStr)]
@@ -72,6 +72,7 @@ impl CompressionType {
 	}
 }
 
+/// An AssetBundle Object contains a lookup from path name to individual objects in the bundle.
 pub struct AssetBundle {
 	signature: Signature,
 	format_version: u32,
@@ -80,22 +81,43 @@ pub struct AssetBundle {
 	descriptor: FSDescriptor,
 }
 
-macro_rules! tryVoid {
+struct ArchiveBlockInfo {
+	uncompressed_size: u32,
+	compressed_size: u32,
+	flags: i16,
+}
+
+macro_rules! tryOption {
     ($e:expr) => (match $e {
         Ok(val) => val,
         Err(err) => return Some(err),
     });
 }
 
-fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType, uncompressed_size: &u32) -> Result<Vec<u8>,Error> {
+macro_rules! isOptionError {
+    ($e:expr) => (match $e {
+        Some(err) => return Err(err),
+		_ => {}
+    });
+}
+
+macro_rules! tryVoid {
+    ($e:expr) => (match $e {
+        Err(err) => return Some(err),
+		_ => {},
+    });
+}
+
+fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>,Error> {
 	match *compression_type {
 		CompressionType::LZ4|CompressionType::LZ4HC => {
-			let mut in_buf = Cursor::new(data);
-			let mut decoder = try!(Decoder::new(in_buf));
-			let mut out_buf = vec![];
-			let data_read = try!(decoder.read_to_end(&mut out_buf));
-			Ok(out_buf)
-		}
+			println!("{:?}",data);
+			match lz4_compress::decompress(data.as_slice()) {
+				Err(err) => {return Err(Error::new(ErrorKind::InvalidData, format!("LZ4 decompression failed: {:?}",err) )); },
+				Ok(buf) => {Ok(buf)},
+			}
+		},
+		CompressionType::LZMA|CompressionType::LZHAM => Err(Error::new(ErrorKind::InvalidData, format!("{:?} is not yet implemented",*compression_type) )),
 		_ => Ok(data.clone()),
 	}
 }
@@ -127,7 +149,7 @@ impl AssetBundle {
 
 		match result.signature {
 			Signature::UnityArchive => { result.load_unityarchive(); }
-			Signature::UnityFS => { result.load_unityfs(&mut bin_reader); }
+			Signature::UnityFS => { isOptionError!(result.load_unityfs(&mut bin_reader)); }
 			Signature::UnityWeb|Signature::UnityRaw => { result.load_raw(); }
 			_ => { return Err(Error::new(ErrorKind::InvalidData, format!("Unknown format found: {}", signature_str) )); }
 		}
@@ -136,29 +158,55 @@ impl AssetBundle {
 	}
 
 	fn load_unityfs(&mut self, buffer: &mut BinaryReader) -> Option<Error> {
-		self.format_version = tryVoid!(buffer.read_u32());
-		self.target_version = tryVoid!(buffer.read_string());
-		self.generator_version = tryVoid!(buffer.read_string());
+		self.format_version = tryOption!(buffer.read_u32());
+		self.target_version = tryOption!(buffer.read_string());
+		self.generator_version = tryOption!(buffer.read_string());
 
-		let file_size = tryVoid!(buffer.read_i64());
-		let ciblock_size = tryVoid!(buffer.read_u32());
-		let uiblock_size = tryVoid!(buffer.read_u32());
+		let file_size = tryOption!(buffer.read_i64());
+		let ciblock_size = tryOption!(buffer.read_u32());
+		let uiblock_size = tryOption!(buffer.read_u32());
 
 		self.descriptor = FSDescriptor::UnityFs(UnityFsDescriptor {
 			fs_file_size: file_size,
 			ci_block_size: ciblock_size,
 			ui_block_size: uiblock_size });
 
-		/*if let FSDescriptor::UnityFs(ref d) = self.descriptor {
-			println!("{} {} {}",d.fs_file_size, d.ci_block_size, d.ui_block_size);
-		}*/
-        let flags = (tryVoid!(buffer.read_u32()) as u8) & 0x3F;
-		let compression_type = tryVoid!(CompressionType::from(&flags));
+        let flags = (tryOption!(buffer.read_u32()) as u8) & 0x3F;
+		let compression_type = tryOption!(CompressionType::from(&flags));
+		let raw_data = tryOption!(buffer.read_bytes(&(ciblock_size as u64)));
 
-		let raw_data = tryVoid!(buffer.read_bytes(&(ciblock_size as u64)));
-		let decompressed_data = tryVoid!(decompress_data(&raw_data, &compression_type, &uiblock_size));
+		let decompressed_data = tryOption!(decompress_data(&raw_data, &compression_type));
+		let mut decompressed_data_array = decompressed_data.as_slice();
+		let mut data_reader = BinaryReader::new(&mut decompressed_data_array, Endianness::Big);
 		
+		tryVoid!(data_reader.read_bytes(&16)); // guid
 		
+		let num_blocks = tryOption!(data_reader.read_u32());
+		let mut blocks: Vec<ArchiveBlockInfo> = vec![];
+
+		for _ in 0..num_blocks {
+			let bu_size = tryOption!(data_reader.read_u32());
+			let bc_size = tryOption!(data_reader.read_u32());
+			let b_flags = tryOption!(data_reader.read_i16());
+
+			blocks.push(ArchiveBlockInfo {
+				uncompressed_size: bu_size,
+				compressed_size: bc_size,
+				flags: b_flags,
+			});
+		}
+
+		let num_nodes = tryOption!(data_reader.read_u32());
+		let mut nodes: Vec<(u64, u64, u32, String)> = vec![];
+		for _ in 0..num_nodes {
+			let n_offset = tryOption!(data_reader.read_u64());
+			let n_size = tryOption!(data_reader.read_u64());
+			let n_status = tryOption!(data_reader.read_u32());
+			let n_name = tryOption!(data_reader.read_string());
+			nodes.push((n_offset, n_size, n_status, n_name));
+		} 
+		
+
 		None
 	}
 

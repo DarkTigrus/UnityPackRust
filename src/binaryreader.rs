@@ -29,6 +29,22 @@ impl<'a> BinaryReader<'a> {
         self.buffer.read_u32::<BigEndian>()
     }
 
+    pub fn read_u64(&mut self) -> io::Result<u64> {
+        self.cursor += 8;
+        if self.endianness == Endianness::Little {
+            return self.buffer.read_u64::<LittleEndian>();
+        }
+        self.buffer.read_u64::<BigEndian>()
+    }
+
+    pub fn read_i16(&mut self) -> io::Result<i16> {
+        self.cursor += 2;
+        if self.endianness == Endianness::Little {
+            return self.buffer.read_i16::<LittleEndian>();
+        }
+        self.buffer.read_i16::<BigEndian>()
+    }
+
     pub fn read_i64(&mut self) -> io::Result<i64> {
         self.cursor += 8;
         if self.endianness == Endianness::Little {

@@ -5,7 +5,7 @@ authors = ["Istvan Fehervari <gooksl@gmail.com>"]
 
 [dependencies]
 byteorder = "1"
-lz4 = "*"
+lz4-compress = "0.1.1"
 lzma = "*"
 custom_derive = "0.1.7"
 enum_derive = "0.1.7"
