@@ -8,9 +8,7 @@ use std::fs::File;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::BufReader;
-use std::io::Read;
 use binaryreader::*;
-use byteorder::{ByteOrder, LittleEndian, WriteBytesExt};
 use lz4_compress;
 
 custom_derive! {
@@ -76,9 +74,20 @@ impl CompressionType {
 pub struct AssetBundle {
 	signature: Signature,
 	format_version: u32,
-	target_version: String, // also called unity_version
+	target_version: String, // also called as unity_version
 	generator_version: String,
 	descriptor: FSDescriptor,
+}
+
+impl Default for AssetBundle {
+    fn default() -> AssetBundle {
+		AssetBundle {
+			signature: Signature::Unknown,
+			format_version: 0,
+			target_version: String::new(),
+			generator_version: String::new(),
+			descriptor: FSDescriptor::Unknown, }
+	}
 }
 
 struct ArchiveBlockInfo {
@@ -124,7 +133,6 @@ fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result
 
 impl AssetBundle {
 	
-	#[no_mangle]
 	pub extern fn load_from_file(file_path: &str) -> Result<AssetBundle, Error> {
 		
 		// open file

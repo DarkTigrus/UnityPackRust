@@ -3,6 +3,10 @@ name = "unitypack"
 version = "0.1.0"
 authors = ["Istvan Fehervari <gooksl@gmail.com>"]
 
+[lib]
+name = "unitypack"
+crate-type = ["dylib"]
+
 [dependencies]
 byteorder = "1"
 lz4-compress = "0.1.1"

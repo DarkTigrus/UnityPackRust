@@ -11,8 +11,9 @@ extern crate custom_derive;
 extern crate enum_derive;
 extern crate lz4_compress;
 
-pub mod assetbundle;
+mod assetbundle;
 mod binaryreader;
+pub mod unitypack_c;
 
 #[cfg(test)]
 mod tests {
