@@ -4,12 +4,14 @@
  *
  * All rights reserved
  */
+use std::io;
 use std::fs::File;
 use std::io::Error;
 use std::io::ErrorKind;
 use std::io::BufReader;
 use std::io::Read;
 use std::io::Seek;
+use std::io::SeekFrom;
 use std::io::Cursor;
 use binaryreader::*;
 use lz4_compress;
@@ -58,20 +60,18 @@ enum CompressionType {
     LZ4,
     LZ4HC,
     LZHAM,
+    Unknown,
 }
 
 impl CompressionType {
-    fn from(x: &u8) -> Result<CompressionType, Error> {
+    fn from(x: &u8) -> CompressionType {
         match x {
-            x if *x == CompressionType::None as u8 => Ok(CompressionType::None),
-            x if *x == CompressionType::LZMA as u8 => Ok(CompressionType::LZMA),
-            x if *x == CompressionType::LZ4 as u8 => Ok(CompressionType::LZ4),
-            x if *x == CompressionType::LZ4HC as u8 => Ok(CompressionType::LZ4HC),
-            x if *x == CompressionType::LZHAM as u8 => Ok(CompressionType::LZHAM),
-            _ => {
-                Err(Error::new(ErrorKind::InvalidData,
-                               format!("Unknown compression type found: {}", x)))
-            }
+            x if *x == CompressionType::None as u8 => CompressionType::None,
+            x if *x == CompressionType::LZMA as u8 => CompressionType::LZMA,
+            x if *x == CompressionType::LZ4 as u8 => CompressionType::LZ4,
+            x if *x == CompressionType::LZ4HC as u8 => CompressionType::LZ4HC,
+            x if *x == CompressionType::LZHAM as u8 => CompressionType::LZHAM,
+            _ => CompressionType::Unknown,
         }
     }
 }
@@ -118,7 +118,7 @@ macro_rules! tryVoid {
     });
 }
 
-fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>, Error> {
+fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
     match *compression_type {
         CompressionType::LZ4 |
         CompressionType::LZ4HC => {
@@ -144,8 +144,7 @@ impl AssetBundle {
 
         // open file
         let file = try!(File::open(file_path));
-        let mut buf_reader = BufReader::new(file);
-        let mut bin_reader = BinaryReader::new(buf_reader, Endianness::Big);
+        let mut bin_reader = BinaryReader::new(BufReader::new(file), Endianness::Big);
 
         let mut result = AssetBundle {
             signature: Signature::Unknown,
@@ -168,7 +167,7 @@ impl AssetBundle {
                 result.load_unityarchive();
             }
             Signature::UnityFS => {
-                isOptionError!(result.load_unityfs(&mut bin_reader));
+                isOptionError!(result.load_unityfs(bin_reader));
             }
             Signature::UnityWeb | Signature::UnityRaw => {
                 result.load_raw();
@@ -182,7 +181,7 @@ impl AssetBundle {
         Ok(result)
     }
 
-    fn load_unityfs<R>(&mut self, buffer: &mut BinaryReader<R>) -> Option<Error>
+    fn load_unityfs<R>(&mut self, mut buffer: BinaryReader<R>) -> Option<Error>
         where R: Read + Seek
     {
         self.format_version = tryOption!(buffer.read_u32());
@@ -200,12 +199,11 @@ impl AssetBundle {
                                                 });
 
         let flags = (tryOption!(buffer.read_u32()) as u8) & 0x3F;
-        let compression_type = tryOption!(CompressionType::from(&flags));
+        let compression_type = CompressionType::from(&flags);
         let raw_data = tryOption!(buffer.read_bytes((ciblock_size as usize)));
 
         let decompressed_data = tryOption!(decompress_data(&raw_data, &compression_type));
-        let mut decompressed_data_array = decompressed_data.as_slice();
-        let mut dreader = BufReader::new(Cursor::new(decompressed_data_array));
+        let dreader = BufReader::new(Cursor::new(decompressed_data.as_slice()));
         let mut data_reader = BinaryReader::new(dreader, Endianness::Big);
 
         tryVoid!(data_reader.read_bytes(16)); // guid
@@ -235,7 +233,7 @@ impl AssetBundle {
             nodes.push((n_offset, n_size, n_status, n_name));
         }
 
-        let mut storageReader = ArchiveBlockStorageReader::new(buffer);
+        let mut storageReader = ArchiveBlockStorageReader::new(buffer.take_buffer(), blocks);
 
         None
     }
@@ -252,25 +250,148 @@ impl AssetBundle {
     }
 }
 
+/// Contains compression information about a block
 struct ArchiveBlockInfo {
     uncompressed_size: u32,
     compressed_size: u32,
     flags: i16,
 }
 
-/// ArchiveBlockStorageReader reads data that is composed of compressed blocks
-struct ArchiveBlockStorageReader<'a, R: Read + Seek + 'a> {
-    cursor: u64,
-    buffer: &'a mut BinaryReader<R>,
+impl ArchiveBlockInfo {
+    fn compression_type(&self) -> CompressionType {
+        let flag = (self.flags as u8 & 0x3f) as u8;
+        CompressionType::from(&flag)
+    }
+
+    fn is_compressed(&self) -> bool {
+        self.compression_type() != CompressionType::None
+    }
+
+    fn decompress(&self, data: Vec<u8>) -> io::Result<Vec<u8>> {
+        if !self.is_compressed() {
+            return Ok(data);
+        }
+
+        let compression_type = self.compression_type();
+        match compression_type {
+            CompressionType::LZMA => {
+                // TODO: LZMA decompression
+                Ok(data)
+            }
+            CompressionType::LZ4 |
+            CompressionType::LZ4HC => {
+                let decompressed_data = vec![0; self.uncompressed_size as usize];
+                decompress_data(&decompressed_data, &compression_type)
+            }
+            _ => {
+                Err(Error::new(ErrorKind::InvalidData,
+                               format!("Unimplemented compression method: {:?}", compression_type)))
+            }
+        }
+    }
 }
 
-impl<'a, R> ArchiveBlockStorageReader<'a, R>
+/// ArchiveBlockStorageReader reads data that is composed of compressed blocks
+struct ArchiveBlockStorageReader<R: Read + Seek> {
+    /// Read object for the underlying compressed blocks
+    buffer: BufReader<R>,
+    blocks: Vec<ArchiveBlockInfo>,
+    /// total uncompressed size
+    virtual_size: u64,
+    /// cursor in the virtual uncompressed buffer
+    virtual_cursor: u64,
+    /// offset of the virtual block in buffer
+    base_offset: u64,
+    /// points to the currently decompressed block
+    current_block_idx: isize,
+    /// offset to the current block
+    current_block_offset: u64,
+    /// current uncompressed block
+    current_stream: Vec<u8>,
+}
+
+impl<R> ArchiveBlockStorageReader<R>
     where R: Read + Seek
 {
-    fn new(buffer: &'a mut BinaryReader<R>) -> ArchiveBlockStorageReader<'a, R> {
+    fn new(mut buffer: BufReader<R>,
+           blocks: Vec<ArchiveBlockInfo>)
+           -> ArchiveBlockStorageReader<R> {
+        let virtual_size = blocks
+            .iter()
+            .fold(0, |total, next| total + next.uncompressed_size as u64);
+
+        let base_offset = buffer.tell();
+
         ArchiveBlockStorageReader {
-            cursor: 0,
+            virtual_cursor: 0,
             buffer: buffer,
+            blocks: blocks,
+            virtual_size: virtual_size,
+            base_offset: base_offset,
+            current_block_idx: -1 as isize,
+            current_block_offset: 0,
+            current_stream: Vec::new(),
         }
+    }
+
+    fn seek_to_block(&mut self, pos: &u64) -> io::Result<()> {
+        // check if we are already in the corresponding block
+        if (self.current_block_idx < 0) ||
+           ((*pos < self.current_block_offset) ||
+            (*pos >
+             (self.current_block_offset +
+              self.blocks[self.current_block_idx as usize].uncompressed_size as u64))) {
+            let mut base_offset: u64 = 0;
+            let mut offset = 0;
+            let mut found = false;
+            for b in 0..self.blocks.len() {
+                let block = &self.blocks[b];
+                if offset + block.uncompressed_size as u64 > *pos {
+                    self.current_block_idx = b as isize;
+                    found = true;
+                    break;
+                }
+                base_offset += block.compressed_size as u64;
+                offset += block.uncompressed_size as u64;
+            }
+
+            if !found {
+                self.current_block_idx = -1;
+                self.current_stream = Vec::new();
+                return Ok(());
+            }
+
+            self.current_block_offset = offset;
+            try!(self.buffer
+                     .seek(SeekFrom::Start(self.base_offset + base_offset)));
+            let current_block = &self.blocks[self.current_block_idx as usize];
+            let mut compressed_data = vec![0; current_block.compressed_size as usize];
+            try!(self.buffer.read_exact(compressed_data.as_mut_slice()));
+            self.current_stream = try!(current_block.decompress(compressed_data));
+        }
+        Ok(())
+    }
+}
+
+impl<R> Read for ArchiveBlockStorageReader<R>
+    where R: Read + Seek
+{
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+
+        let size = buf.len();
+
+        while size != 0 && self.virtual_cursor < self.virtual_size {
+            let cursor = self.virtual_cursor;
+            try!(self.seek_to_block(&cursor));
+        }
+        Ok(1)
+    }
+}
+
+impl<R> Teller for ArchiveBlockStorageReader<R>
+    where R: Read + Seek
+{
+    fn tell(&mut self) -> u64 {
+        self.virtual_cursor
     }
 }

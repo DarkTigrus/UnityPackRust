@@ -17,6 +17,21 @@ pub enum Endianness {
     Little,
 }
 
+pub trait Teller {
+    fn tell(&mut self) -> u64;
+}
+
+impl<R> Teller for BufReader<R>
+    where R: Seek
+{
+    fn tell(&mut self) -> u64 {
+        match self.seek(SeekFrom::Start(0)) {
+            Ok(p) => p,
+            _ => 0,
+        }
+    }
+}
+
 pub struct BinaryReader<R: Read + Seek> {
     buffer: BufReader<R>,
     cursor: u64,
@@ -32,6 +47,10 @@ impl<R> BinaryReader<R>
             cursor: 0,
             endianness: endianness,
         }
+    }
+
+    pub fn take_buffer(self) -> BufReader<R> {
+        self.buffer
     }
 
     pub fn read_u32(&mut self) -> io::Result<u32> {
@@ -87,8 +106,12 @@ impl<R> BinaryReader<R>
 
         Ok(buf)
     }
+}
 
-    pub fn tell(&mut self) -> u64 {
+impl<R> Teller for BinaryReader<R>
+    where R: Read + Seek
+{
+    fn tell(&mut self) -> u64 {
         self.cursor
     }
 }
@@ -115,6 +138,17 @@ impl<R> Seek for BinaryReader<R>
     where R: Read + Seek
 {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match pos {
+            SeekFrom::Start(p) => self.cursor += p,
+            SeekFrom::Current(p) |
+            SeekFrom::End(p) => {
+                if p < 0 {
+                    self.cursor -= p.abs() as u64;
+                } else {
+                    self.cursor += p as u64;
+                }
+            }
+        }
         self.buffer.seek(pos)
     }
 }
