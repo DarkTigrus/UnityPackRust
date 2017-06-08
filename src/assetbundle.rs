@@ -234,6 +234,9 @@ impl AssetBundle {
         }
 
         let mut storageReader = ArchiveBlockStorageReader::new(buffer.take_buffer(), blocks);
+		for (n_offset, n_size, n_status, n_name) in nodes {
+			storageReader.seek(SeekFrom::Start(n_offset));
+		}
 
         None
     }
@@ -394,4 +397,33 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
     fn tell(&mut self) -> u64 {
         self.virtual_cursor
     }
+}
+
+impl<R> Seek for ArchiveBlockStorageReader<R>
+	where R: Read + Seek 
+{
+	fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+		let new_pos: u64;
+		match pos {
+			SeekFrom::Start(p) => {new_pos = p;},
+			SeekFrom::End(p) => {
+				if p < 0 {
+					new_pos = self.virtual_size - (p.abs() as u64);
+				} else {
+					new_pos = self.virtual_size + (p as u64);
+				}
+			},
+			SeekFrom::Current(p) => {
+				if p < 0 {
+					new_pos = self.virtual_cursor - (p.abs() as u64);
+				} else {
+					new_pos = self.virtual_cursor + (p as u64);
+				}
+			},
+		};
+
+		try!(self.seek_to_block(&new_pos));
+		self.virtual_cursor = new_pos;
+		Ok(self.virtual_cursor)
+	}
 }
