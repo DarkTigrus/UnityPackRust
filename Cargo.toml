@@ -8,6 +8,7 @@ name = "unitypack"
 crate-type = ["dylib"]
 
 [dependencies]
+libc = "0.2.23"
 byteorder = "1"
 lz4-compress = "0.1.1"
 lzma = "*"

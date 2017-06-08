@@ -2,7 +2,7 @@
  * This file is part of the UnityPack rust package.
  * (c) Istvan Fehervari <gooksl@gmail.com>
  *
- * All rights reserved
+ * All rights reserved 2017
  */
 use std::cmp;
 use std::io;
@@ -14,8 +14,51 @@ use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Cursor;
+use asset::Asset;
 use binaryreader::*;
 use lz4_compress;
+
+macro_rules! tryOption {
+    ($e:expr) => (match $e {
+        Ok(val) => val,
+        Err(err) => return Some(err),
+    });
+}
+
+macro_rules! isOptionError {
+    ($e:expr) => (match $e {
+        Some(err) => return Err(err),
+		_ => {}
+    });
+}
+
+macro_rules! tryVoid {
+    ($e:expr) => (match $e {
+        Err(err) => return Some(err),
+		_ => {},
+    });
+}
+
+fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
+    match *compression_type {
+        CompressionType::LZ4 |
+        CompressionType::LZ4HC => {
+            println!("{:?}", data);
+            match lz4_compress::decompress(data.as_slice()) {
+                Err(err) => {
+                    return Err(Error::new(ErrorKind::InvalidData,
+                                          format!("LZ4 decompression failed: {:?}", err)));
+                }
+                Ok(buf) => Ok(buf),
+            }
+        }
+        CompressionType::LZMA | CompressionType::LZHAM => {
+            Err(Error::new(ErrorKind::InvalidData,
+                           format!("{:?} is not yet implemented", *compression_type)))
+        }
+        _ => Ok(data.clone()),
+    }
+}
 
 custom_derive! {
     #[derive(Debug, EnumFromStr)]
@@ -84,6 +127,7 @@ pub struct AssetBundle {
     target_version: String, // also called as unity_version
     generator_version: String,
     descriptor: FSDescriptor,
+    assets: Vec<Asset>,
 }
 
 impl Default for AssetBundle {
@@ -94,49 +138,8 @@ impl Default for AssetBundle {
             target_version: String::new(),
             generator_version: String::new(),
             descriptor: FSDescriptor::Unknown,
+            assets: Vec::new(),
         }
-    }
-}
-
-macro_rules! tryOption {
-    ($e:expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => return Some(err),
-    });
-}
-
-macro_rules! isOptionError {
-    ($e:expr) => (match $e {
-        Some(err) => return Err(err),
-		_ => {}
-    });
-}
-
-macro_rules! tryVoid {
-    ($e:expr) => (match $e {
-        Err(err) => return Some(err),
-		_ => {},
-    });
-}
-
-fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
-    match *compression_type {
-        CompressionType::LZ4 |
-        CompressionType::LZ4HC => {
-            println!("{:?}", data);
-            match lz4_compress::decompress(data.as_slice()) {
-                Err(err) => {
-                    return Err(Error::new(ErrorKind::InvalidData,
-                                          format!("LZ4 decompression failed: {:?}", err)));
-                }
-                Ok(buf) => Ok(buf),
-            }
-        }
-        CompressionType::LZMA | CompressionType::LZHAM => {
-            Err(Error::new(ErrorKind::InvalidData,
-                           format!("{:?} is not yet implemented", *compression_type)))
-        }
-        _ => Ok(data.clone()),
     }
 }
 
@@ -153,6 +156,7 @@ impl AssetBundle {
             target_version: String::new(),
             generator_version: String::new(),
             descriptor: FSDescriptor::Unknown,
+            assets: Vec::new(),
         };
 
         // read header
