@@ -4,6 +4,7 @@
  *
  * All rights reserved
  */
+use std::cmp;
 use std::io;
 use std::fs::File;
 use std::io::Error;
@@ -234,9 +235,9 @@ impl AssetBundle {
         }
 
         let mut storageReader = ArchiveBlockStorageReader::new(buffer.take_buffer(), blocks);
-		for (n_offset, n_size, n_status, n_name) in nodes {
-			storageReader.seek(SeekFrom::Start(n_offset));
-		}
+        for (n_offset, n_size, n_status, n_name) in nodes {
+            storageReader.seek(SeekFrom::Start(n_offset));
+        }
 
         None
     }
@@ -307,7 +308,7 @@ struct ArchiveBlockStorageReader<R: Read + Seek> {
     base_offset: u64,
     /// points to the currently decompressed block
     current_block_idx: isize,
-    /// offset to the current block
+    /// offset to the current block in the virtual buffer
     current_block_offset: u64,
     /// current uncompressed block
     current_stream: Vec<u8>,
@@ -381,13 +382,32 @@ impl<R> Read for ArchiveBlockStorageReader<R>
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
-        let size = buf.len();
+        let mut size = buf.len();
+        let mut bytes: Vec<u8> = Vec::new();
 
         while size != 0 && self.virtual_cursor < self.virtual_size {
             let cursor = self.virtual_cursor;
             try!(self.seek_to_block(&cursor));
+
+            let current_stream_cursor = self.virtual_cursor - self.current_block_offset;
+            let current_stream_len = self.current_stream.len();
+            if (current_stream_len as u64) < current_stream_cursor {
+                return Err(Error::new(ErrorKind::InvalidData,
+                                      "Error while reading block storeage"));
+            }
+            let remaining = (current_stream_len as u64) - current_stream_cursor;
+            let read_size = cmp::min(size, remaining as usize);
+            if read_size == 0 {
+                return Err(Error::new(ErrorKind::InvalidData,
+                                      "Error while reading block storeage"));
+            }
+            let part = &self.current_stream[(current_stream_cursor as usize)..read_size];
+            size -= read_size;
+            self.virtual_cursor += read_size as u64;
+            bytes.extend(part);
         }
-        Ok(1)
+        buf.clone_from_slice(&bytes);
+        Ok(bytes.len())
     }
 }
 
@@ -400,30 +420,32 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
 }
 
 impl<R> Seek for ArchiveBlockStorageReader<R>
-	where R: Read + Seek 
+    where R: Read + Seek
 {
-	fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-		let new_pos: u64;
-		match pos {
-			SeekFrom::Start(p) => {new_pos = p;},
-			SeekFrom::End(p) => {
-				if p < 0 {
-					new_pos = self.virtual_size - (p.abs() as u64);
-				} else {
-					new_pos = self.virtual_size + (p as u64);
-				}
-			},
-			SeekFrom::Current(p) => {
-				if p < 0 {
-					new_pos = self.virtual_cursor - (p.abs() as u64);
-				} else {
-					new_pos = self.virtual_cursor + (p as u64);
-				}
-			},
-		};
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        let new_pos: u64;
+        match pos {
+            SeekFrom::Start(p) => {
+                new_pos = p;
+            }
+            SeekFrom::End(p) => {
+                if p < 0 {
+                    new_pos = self.virtual_size - (p.abs() as u64);
+                } else {
+                    new_pos = self.virtual_size + (p as u64);
+                }
+            }
+            SeekFrom::Current(p) => {
+                if p < 0 {
+                    new_pos = self.virtual_cursor - (p.abs() as u64);
+                } else {
+                    new_pos = self.virtual_cursor + (p as u64);
+                }
+            }
+        };
 
-		try!(self.seek_to_block(&new_pos));
-		self.virtual_cursor = new_pos;
-		Ok(self.virtual_cursor)
-	}
+        try!(self.seek_to_block(&new_pos));
+        self.virtual_cursor = new_pos;
+        Ok(self.virtual_cursor)
+    }
 }
