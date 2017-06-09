@@ -128,19 +128,7 @@ pub struct AssetBundle {
     generator_version: String,
     descriptor: FSDescriptor,
     assets: Vec<Asset>,
-}
-
-impl Default for AssetBundle {
-    fn default() -> AssetBundle {
-        AssetBundle {
-            signature: Signature::Unknown,
-            format_version: 0,
-            target_version: String::new(),
-            generator_version: String::new(),
-            descriptor: FSDescriptor::Unknown,
-            assets: Vec::new(),
-        }
-    }
+    buffer: Option<BinaryReader<File>>,
 }
 
 impl AssetBundle {
@@ -150,22 +138,22 @@ impl AssetBundle {
         let file = try!(File::open(file_path));
         let mut bin_reader = BinaryReader::new(BufReader::new(file), Endianness::Big);
 
+        // read header
+        let signature_str = try!(bin_reader.read_string());
+        let signature = match signature_str.parse() {
+            Ok(x) => x,
+            _ => Signature::Unknown,
+        };
+
         let mut result = AssetBundle {
-            signature: Signature::Unknown,
+            signature: signature,
             format_version: 0,
             target_version: String::new(),
             generator_version: String::new(),
             descriptor: FSDescriptor::Unknown,
             assets: Vec::new(),
+            buffer: None,
         };
-
-        // read header
-        let signature_str = try!(bin_reader.read_string());
-        if let Ok(x) = signature_str.parse() {
-            result.signature = x;
-        } else {
-            result.signature = Signature::Unknown;
-        }
 
         match result.signature {
             Signature::UnityArchive => {
@@ -186,9 +174,7 @@ impl AssetBundle {
         Ok(result)
     }
 
-    fn load_unityfs<R>(&mut self, mut buffer: BinaryReader<R>) -> Option<Error>
-        where R: Read + Seek
-    {
+    fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Option<Error> {
         self.format_version = tryOption!(buffer.read_u32());
         self.target_version = tryOption!(buffer.read_string());
         self.generator_version = tryOption!(buffer.read_string());
@@ -237,11 +223,12 @@ impl AssetBundle {
             let n_name = tryOption!(data_reader.read_string());
             nodes.push((n_offset, n_size, n_status, n_name));
         }
-
-        let mut storageReader = ArchiveBlockStorageReader::new(buffer.take_buffer(), blocks);
+        /*
+        self.buffer = Some(BufReader::new(ArchiveBlockStorageReader::new(buffer.take_buffer(),
+                                                                         blocks)));
         for (n_offset, n_size, n_status, n_name) in nodes {
             storageReader.seek(SeekFrom::Start(n_offset));
-        }
+        }*/
 
         None
     }
