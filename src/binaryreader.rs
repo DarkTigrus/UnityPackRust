@@ -19,16 +19,34 @@ pub enum Endianness {
 
 pub trait Teller {
     fn tell(&mut self) -> u64;
+    fn read_u8(&mut self) -> io::Result<u8>;
+    fn read_string(&mut self) -> io::Result<String>;
 }
 
 impl<R> Teller for BufReader<R>
-    where R: Seek
+    where R: Seek+Read
 {
     fn tell(&mut self) -> u64 {
         match self.seek(SeekFrom::Start(0)) {
             Ok(p) => p,
             _ => 0,
         }
+    }
+
+    fn read_string(&mut self) -> io::Result<String> {
+        // read bytes until zero termination
+        let mut result: String = "".to_string();
+
+        let mut k = try!(Teller::read_u8(self));
+        while k != 0 {
+            result.push(k as char);
+            k = try!(Teller::read_u8(self));
+        }
+        Ok(result)
+    }
+
+    fn read_u8(&mut self) -> io::Result<u8> {
+        ReadBytesExt::read_u8(self)
     }
 }
 
@@ -51,6 +69,11 @@ impl<R> BinaryReader<R>
 
     pub fn take_buffer(self) -> BufReader<R> {
         self.buffer
+    }
+
+    pub fn read_i8(&mut self) -> io::Result<i8> {
+        self.cursor += 1;
+        self.buffer.read_i8()
     }
 
     pub fn read_u32(&mut self) -> io::Result<u32> {
@@ -77,25 +100,20 @@ impl<R> BinaryReader<R>
         self.buffer.read_i16::<BigEndian>()
     }
 
+    pub fn read_i32(&mut self) -> io::Result<i32> {
+        self.cursor += 4;
+        if self.endianness == Endianness::Little {
+            return self.buffer.read_i32::<LittleEndian>();
+        }
+        self.buffer.read_i32::<BigEndian>()
+    }
+
     pub fn read_i64(&mut self) -> io::Result<i64> {
         self.cursor += 8;
         if self.endianness == Endianness::Little {
             return self.buffer.read_i64::<LittleEndian>();
         }
         self.buffer.read_i64::<BigEndian>()
-    }
-
-    pub fn read_string(&mut self) -> io::Result<String> {
-        // read bytes until zero termination
-        let mut result: String = "".to_string();
-
-        let mut k = try!(self.buffer.read_u8());
-        self.cursor += 1;
-        while k != 0 {
-            result.push(k as char);
-            k = try!(self.buffer.read_u8());
-        }
-        Ok(result)
     }
 
     pub fn read_bytes(&mut self, bytes_to_read: usize) -> io::Result<Vec<u8>> {
@@ -113,6 +131,24 @@ impl<R> Teller for BinaryReader<R>
 {
     fn tell(&mut self) -> u64 {
         self.cursor
+    }
+
+    fn read_string(&mut self) -> io::Result<String> {
+        // read bytes until zero termination
+        let mut result: String = "".to_string();
+
+        let mut k = try!(Teller::read_u8(self));
+        self.cursor += 1;
+        while k != 0 {
+            result.push(k as char);
+            k = try!(Teller::read_u8(self));
+        }
+        Ok(result)
+    }
+
+    fn read_u8(&mut self) -> io::Result<u8> {
+        self.cursor += 1;
+        ReadBytesExt::read_u8(self)
     }
 }
 

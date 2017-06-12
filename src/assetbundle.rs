@@ -5,6 +5,7 @@
  * All rights reserved 2017
  */
 use std::cmp;
+use std::fmt;
 use std::io;
 use std::fs::File;
 use std::io::Error;
@@ -17,27 +18,7 @@ use std::io::Cursor;
 use asset::Asset;
 use binaryreader::*;
 use lz4_compress;
-
-macro_rules! tryOption {
-    ($e:expr) => (match $e {
-        Ok(val) => val,
-        Err(err) => return Some(err),
-    });
-}
-
-macro_rules! isOptionError {
-    ($e:expr) => (match $e {
-        Some(err) => return Err(err),
-		_ => {}
-    });
-}
-
-macro_rules! tryVoid {
-    ($e:expr) => (match $e {
-        Err(err) => return Some(err),
-		_ => {},
-    });
-}
+use byteorder::ReadBytesExt;
 
 fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
     match *compression_type {
@@ -60,38 +41,45 @@ fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Re
     }
 }
 
-custom_derive! {
-    #[derive(Debug, EnumFromStr)]
-    enum Signature {
-        UnityFS,
-        UnityWeb,
-        UnityRaw,
-        UnityArchive,
-		Unknown,
+#[derive(Debug)]
+pub enum Signature {
+    UnityFS(ArchiveBlockStorageReader<File>),
+    UnityWeb(BufReader<File>),
+    UnityRaw(BufReader<File>),
+    UnityArchive,
+	Unknown,
+}
+
+impl Seek for Signature {
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        match self {
+            &mut Signature::UnityFS(ref mut buf) => {buf.seek(pos)},
+            _ => {Ok(0)},
+        }
     }
 }
 
 #[derive(Debug)]
-struct UnityFsDescriptor {
+pub struct UnityFsDescriptor {
     fs_file_size: i64,
     ci_block_size: u32,
     ui_block_size: u32,
 }
 
-#[derive(Debug)]
-struct RawDescriptor {
+#[derive(Debug, Default)]
+pub struct RawDescriptor {
     file_size: u32,
-    header_size: i32,
-    file_count: i32,
-    bundle_count: i32,
+    header_size: u32,
+    file_count: u32,
+    bundle_count: u32,
     bundle_size: u32,
     uncompressed_bundle_size: u32,
     compressed_file_size: u32,
-    asset_header_size: u32,
+    pub asset_header_size: u32,
     num_assets: u32,
 }
 
-enum FSDescriptor {
+pub enum FSDescriptor {
     UnityFs(UnityFsDescriptor),
     Raw(RawDescriptor),
     Unknown,
@@ -121,14 +109,14 @@ impl CompressionType {
 }
 
 /// An AssetBundle Object contains a lookup from path name to individual objects in the bundle.
-pub struct AssetBundle {
-    signature: Signature,
+pub struct AssetBundle  {
+    pub signature: Signature,
     format_version: u32,
-    target_version: String, // also called as unity_version
+    pub target_version: String, // also called as unity_version
     generator_version: String,
-    descriptor: FSDescriptor,
-    assets: Vec<Asset>,
-    buffer: Option<BinaryReader<File>>,
+    pub descriptor: FSDescriptor,
+    name: String,
+    pub assets: Vec<Asset>,
 }
 
 impl AssetBundle {
@@ -138,47 +126,48 @@ impl AssetBundle {
         let file = try!(File::open(file_path));
         let mut bin_reader = BinaryReader::new(BufReader::new(file), Endianness::Big);
 
-        // read header
-        let signature_str = try!(bin_reader.read_string());
-        let signature = match signature_str.parse() {
-            Ok(x) => x,
-            _ => Signature::Unknown,
-        };
-
         let mut result = AssetBundle {
-            signature: signature,
+            signature: Signature::Unknown,
             format_version: 0,
             target_version: String::new(),
             generator_version: String::new(),
             descriptor: FSDescriptor::Unknown,
+            name: String::new(),
             assets: Vec::new(),
-            buffer: None,
         };
 
-        match result.signature {
-            Signature::UnityArchive => {
-                result.load_unityarchive();
-            }
-            Signature::UnityFS => {
+         // read header
+        let signature_str = try!(bin_reader.read_string());
+
+        result.format_version = try!(bin_reader.read_u32());
+        result.target_version = try!(bin_reader.read_string());
+        result.generator_version = try!(bin_reader.read_string());
+
+        match signature_str.as_ref() {
+            "UnityFS" => {
                 isOptionError!(result.load_unityfs(bin_reader));
-            }
-            Signature::UnityWeb | Signature::UnityRaw => {
-                result.load_raw();
+            },
+            "UnityWeb" | "UnityRaw" => {
+                result.load_raw(bin_reader, signature_str.as_ref());
             }
             _ => {
                 return Err(Error::new(ErrorKind::InvalidData,
                                       format!("Unknown format found: {}", signature_str)));
             }
-        }
+        };
 
         Ok(result)
     }
 
-    fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Option<Error> {
-        self.format_version = tryOption!(buffer.read_u32());
-        self.target_version = tryOption!(buffer.read_string());
-        self.generator_version = tryOption!(buffer.read_string());
+    pub fn is_compressed(& self) -> bool {
+        match &self.signature {
+            &Signature::UnityWeb(ref buf) => true,
+            _ => false,
+        }
+    }
 
+    fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Option<Error> { 
+        
         let file_size = tryOption!(buffer.read_i64());
         let ciblock_size = tryOption!(buffer.read_u32());
         let uiblock_size = tryOption!(buffer.read_u32());
@@ -223,19 +212,71 @@ impl AssetBundle {
             let n_name = tryOption!(data_reader.read_string());
             nodes.push((n_offset, n_size, n_status, n_name));
         }
-        /*
-        self.buffer = Some(BufReader::new(ArchiveBlockStorageReader::new(buffer.take_buffer(),
-                                                                         blocks)));
-        for (n_offset, n_size, n_status, n_name) in nodes {
-            storageReader.seek(SeekFrom::Start(n_offset));
-        }*/
+
+        self.signature = Signature::UnityFS(ArchiveBlockStorageReader::new(buffer.take_buffer(),
+                                                                         blocks));
+
+        for (n_offset, _, _, n_name) in nodes {
+            self.signature.seek(SeekFrom::Start(n_offset));
+            let mut asset = tryOption!(Asset::new(self));
+            asset.name = n_name;
+            self.assets.push(asset);
+        }
+
+        if self.assets.len() > 0 {
+            self.name = self.assets[0].name.clone();
+        }
 
         None
     }
 
-    fn load_raw(&mut self) -> Option<Error> {
-        // TODO: loading UnityWeb | UnityRaw format
-        Some(Error::new(ErrorKind::InvalidData, "UnityWeb format is not implemented"))
+    fn load_raw(&mut self, mut buffer: BinaryReader<File>, format: &str) -> Option<Error> {
+        
+        let mut descriptor: RawDescriptor = Default::default();
+        
+        descriptor.file_size = tryOption!(buffer.read_u32());
+		descriptor.header_size = tryOption!(buffer.read_u32());
+        descriptor.file_count = tryOption!(buffer.read_u32());
+		descriptor.bundle_count = tryOption!(buffer.read_u32());
+
+        if self.format_version >= 2 {
+            descriptor.bundle_size = tryOption!(buffer.read_u32()); // without header_size
+
+            if self.format_version >= 3 {
+                descriptor.uncompressed_bundle_size = tryOption!(buffer.read_u32()); // without header_size
+            }
+        }
+
+        if descriptor.header_size >= 60 {
+            descriptor.compressed_file_size = tryOption!(buffer.read_u32()); // with header_size
+            descriptor.asset_header_size = tryOption!(buffer.read_u32());
+        }
+
+        tryOption!(buffer.read_i32());
+        tryOption!(buffer.read_i8());
+        
+        self.name = tryOption!(buffer.read_string());
+
+        tryOption!(buffer.seek(SeekFrom::Start(descriptor.header_size as u64)));
+
+        let num_assets: u32;
+        if !self.is_compressed() {
+            num_assets = tryOption!(buffer.read_u32());
+        } else {
+            num_assets = 1;
+        }
+
+        self.signature = match format {
+            "UnityWeb" => {Signature::UnityWeb(buffer.take_buffer())},
+            "UnityRaw" => {Signature::UnityRaw(buffer.take_buffer())},
+            _ => {return Some(Error::new(ErrorKind::InvalidData, "UnityWeb/Raw format not recognized!"));},
+        };
+        
+        for _ in 0..num_assets {
+            //let asset = tryOption!(Asset::new(&mut buffer, self));
+            //self.assets.push(asset);
+        }
+        None
     }
 
     fn load_unityarchive(&mut self) -> Option<Error> {
@@ -247,8 +288,11 @@ impl AssetBundle {
 
 /// Contains compression information about a block
 struct ArchiveBlockInfo {
+    /// total size if data is uncompressed
     uncompressed_size: u32,
+    /// total size if data is compressed
     compressed_size: u32,
+    /// compression flags
     flags: i16,
 }
 
@@ -287,7 +331,7 @@ impl ArchiveBlockInfo {
 }
 
 /// ArchiveBlockStorageReader reads data that is composed of compressed blocks
-struct ArchiveBlockStorageReader<R: Read + Seek> {
+pub struct ArchiveBlockStorageReader<R: Read + Seek> {
     /// Read object for the underlying compressed blocks
     buffer: BufReader<R>,
     blocks: Vec<ArchiveBlockInfo>,
@@ -408,6 +452,22 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
     fn tell(&mut self) -> u64 {
         self.virtual_cursor
     }
+
+    fn read_string(&mut self) -> io::Result<String> {
+        // read bytes until zero termination
+        let mut result: String = "".to_string();
+
+        let mut k = try!(Teller::read_u8(self));
+        while k != 0 {
+            result.push(k as char);
+            k = try!(Teller::read_u8(self));
+        }
+        Ok(result)
+    }
+
+    fn read_u8(&mut self) -> io::Result<u8> {
+        ReadBytesExt::read_u8(self)
+    }
 }
 
 impl<R> Seek for ArchiveBlockStorageReader<R>
@@ -438,5 +498,11 @@ impl<R> Seek for ArchiveBlockStorageReader<R>
         try!(self.seek_to_block(&new_pos));
         self.virtual_cursor = new_pos;
         Ok(self.virtual_cursor)
+    }
+}
+
+impl<R> fmt::Debug for ArchiveBlockStorageReader<R> where R: Read + Seek {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "ArchiveBlockStorageReader<> with {} blocks", self.blocks.len())
     }
 }

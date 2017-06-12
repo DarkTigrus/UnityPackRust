@@ -6,12 +6,10 @@
  */
 extern crate libc;
 extern crate byteorder;
-#[macro_use]
-extern crate custom_derive;
-#[macro_use]
-extern crate enum_derive;
 extern crate lz4_compress;
 
+#[macro_use]
+mod unitymacros;
 mod assetbundle;
 mod asset;
 mod binaryreader;

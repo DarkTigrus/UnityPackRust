@@ -19,7 +19,10 @@ pub extern "C" fn load_assetbundle_from_file(file_path: *const c_char) -> *const
     unsafe {
         let abundle: AssetBundle = match AssetBundle::load_from_file(file_path_str) {
             Ok(assetbundle) => assetbundle,
-            _ => return ptr::null(),
+            _ => {
+                println!("error loading assetbundle");
+                return ptr::null();
+                },
         };
         transmute(Box::new(abundle))
     }
@@ -29,4 +32,11 @@ pub extern "C" fn load_assetbundle_from_file(file_path: *const c_char) -> *const
 pub extern "C" fn destroy_assetbundle(ptr: *mut AssetBundle) {
     let _bundle: Box<AssetBundle> = unsafe { transmute(ptr) };
     // Drop
+}
+
+// TODO: this is an experimental function
+#[no_mangle]
+pub extern "C" fn get_assetbundle_signature(ptr: *mut AssetBundle) {
+    let mut _bundle = unsafe { &mut *ptr };
+    println!("target version: {:?}", _bundle.target_version);
 }
