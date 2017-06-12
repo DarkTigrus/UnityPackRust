@@ -11,4 +11,4 @@ crate-type = ["dylib"]
 libc = "0.2.23"
 byteorder = "1"
 lz4-compress = "0.1.1"
-lzma = "*"
+rust-lzma = "0.2.1"

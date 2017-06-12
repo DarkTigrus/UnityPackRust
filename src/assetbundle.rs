@@ -46,6 +46,7 @@ pub enum Signature {
     UnityFS(ArchiveBlockStorageReader<File>),
     UnityWeb(BufReader<File>),
     UnityRaw(BufReader<File>),
+    UnityRawCompressed(Vec<u8>),
     UnityArchive,
 	Unknown,
 }
@@ -217,7 +218,7 @@ impl AssetBundle {
                                                                          blocks));
 
         for (n_offset, _, _, n_name) in nodes {
-            self.signature.seek(SeekFrom::Start(n_offset));
+            tryVoid!(self.signature.seek(SeekFrom::Start(n_offset)));
             let mut asset = tryOption!(Asset::new(self));
             asset.name = n_name;
             self.assets.push(asset);

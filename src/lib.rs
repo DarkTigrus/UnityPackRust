@@ -7,6 +7,7 @@
 extern crate libc;
 extern crate byteorder;
 extern crate lz4_compress;
+extern crate lzma;
 
 #[macro_use]
 mod unitymacros;
