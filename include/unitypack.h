@@ -1,3 +1,9 @@
+/*
+ * This file is part of the UnityPack rust package.
+ * (c) Istvan Fehervari <gooksl@gmail.com>
+ *
+ * All rights reserved 2017
+ */
 #ifndef UNITYPACK_H
 #define UNITYPACK_H
 
