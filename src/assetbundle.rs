@@ -24,7 +24,6 @@ fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Re
     match *compression_type {
         CompressionType::LZ4 |
         CompressionType::LZ4HC => {
-            println!("{:?}", data);
             match lz4_compress::decompress(data.as_slice()) {
                 Err(err) => {
                     return Err(Error::new(ErrorKind::InvalidData,
@@ -150,11 +149,14 @@ impl AssetBundle {
             },
             "UnityWeb" | "UnityRaw" => {
                 result.load_raw(bin_reader, signature_str.as_ref());
-            }
+            },
+            "UnityArchive" => {
+                result.load_unityarchive();
+            },
             _ => {
                 return Err(Error::new(ErrorKind::InvalidData,
                                       format!("Unknown format found: {}", signature_str)));
-            }
+            },
         };
 
         Ok(result)
@@ -162,7 +164,7 @@ impl AssetBundle {
 
     pub fn is_compressed(& self) -> bool {
         match &self.signature {
-            &Signature::UnityWeb(ref buf) => true,
+            &Signature::UnityWeb(..) => true,
             _ => false,
         }
     }
@@ -284,6 +286,10 @@ impl AssetBundle {
         // TODO: loading UnityArchive format
         Some(Error::new(ErrorKind::InvalidData,
                         "UnityArchive format is not implemented"))
+    }
+
+    pub fn assets(&self) -> &Vec<Asset> {
+        &self.assets
     }
 }
 

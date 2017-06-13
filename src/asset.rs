@@ -10,7 +10,6 @@ use assetbundle::Signature;
 use assetbundle::FSDescriptor;
 use binaryreader::Teller;
 use std::io;
-use std::io::BufReader;
 use std::io::Read;
 use std::io::Error;
 use std::io::ErrorKind;
