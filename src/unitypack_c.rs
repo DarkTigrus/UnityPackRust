@@ -16,7 +16,8 @@ use libc::uint32_t;
 
 // C API
 #[no_mangle]
-pub extern "C" fn unitypack_load_assetbundle_from_file(file_path: *const c_char) -> *const libc::c_void {
+pub extern "C" fn unitypack_load_assetbundle_from_file(file_path: *const c_char)
+                                                       -> *const libc::c_void {
     let file_path_str = unsafe { CStr::from_ptr(file_path).to_str().unwrap() };
 
     unsafe {
@@ -25,7 +26,7 @@ pub extern "C" fn unitypack_load_assetbundle_from_file(file_path: *const c_char)
             _ => {
                 println!("error loading assetbundle");
                 return ptr::null();
-                },
+            }
         };
         transmute(Box::new(abundle))
     }
@@ -71,7 +72,17 @@ pub extern "C" fn unitypack_get_asset_name(ptr: *mut Asset) -> *mut c_char {
 #[no_mangle]
 pub extern "C" fn unitypack_free_rust_string(s: *mut c_char) {
     unsafe {
-        if s.is_null() { return }
+        if s.is_null() {
+            return;
+        }
         CString::from_raw(s)
     };
+}
+
+#[no_mangle]
+pub extern "C" fn unitypack_get_num_objects(ptr: *mut Asset) -> uint32_t {
+    let mut _asset = unsafe { &mut *ptr };
+
+    let objects = _asset.get_objects();
+    objects.len() as uint32_t
 }

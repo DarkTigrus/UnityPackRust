@@ -13,6 +13,7 @@ extern crate lzma;
 mod unitymacros;
 mod assetbundle;
 mod asset;
+mod object;
 mod binaryreader;
 pub mod unitypack_c;
 
