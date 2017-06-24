@@ -1,6 +1,13 @@
 
-[{
-    "key": "shift+cmd+t",
-    "command": "workbench.action.tasks.runTask",
-    "args": "cargo test"
-}]
+[
+    {
+        "key": "shift+cmd+b",
+        "command": "rust.cargo.build.default",
+        "when": "editorTextFocus && editorLangId == 'Rust'"
+    },
+    {
+        "key": "shift+cmd+t",
+        "command": "rust.cargo.test.default",
+        "when": "editorTextFocus && editorLangId == 'Rust'"
+    }
+]
