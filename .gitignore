@@ -1,3 +1,5 @@
 target/
 **/*.rs.bk
-Cargo.lock
+UnityPack/Cargo.lock
+UnityPackExample/build
+

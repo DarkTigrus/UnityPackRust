@@ -1,3 +1,0 @@
-/Users/ifeherva/workspace2/UnityPackExample/build/CMakeFiles/rebuild_cache.dir
-/Users/ifeherva/workspace2/UnityPackExample/build/CMakeFiles/edit_cache.dir
-/Users/ifeherva/workspace2/UnityPackExample/build/CMakeFiles/UnityPackRustExample.dir
