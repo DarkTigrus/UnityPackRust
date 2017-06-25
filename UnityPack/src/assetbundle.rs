@@ -18,7 +18,6 @@ use std::io::Cursor;
 use asset::Asset;
 use binaryreader::*;
 use lz4_compress;
-use byteorder::ReadBytesExt;
 
 fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
     match *compression_type {
@@ -170,7 +169,6 @@ impl AssetBundle {
     }
 
     fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Option<Error> { 
-        
         let file_size = tryOption!(buffer.read_i64());
         let ciblock_size = tryOption!(buffer.read_u32());
         let uiblock_size = tryOption!(buffer.read_u32());
@@ -215,7 +213,7 @@ impl AssetBundle {
             let n_name = tryOption!(data_reader.read_string());
             nodes.push((n_offset, n_size, n_status, n_name));
         }
-
+        println!("sig: {}",buffer.tell());
         self.signature = Signature::UnityFS(ArchiveBlockStorageReader::new(buffer.take_buffer(),
                                                                          blocks));
 
@@ -458,22 +456,6 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
 {
     fn tell(&mut self) -> u64 {
         self.virtual_cursor
-    }
-
-    fn read_string(&mut self) -> io::Result<String> {
-        // read bytes until zero termination
-        let mut result: String = "".to_string();
-
-        let mut k = try!(Teller::read_u8(self));
-        while k != 0 {
-            result.push(k as char);
-            k = try!(Teller::read_u8(self));
-        }
-        Ok(result)
-    }
-
-    fn read_u8(&mut self) -> io::Result<u8> {
-        ReadBytesExt::read_u8(self)
     }
 }
 

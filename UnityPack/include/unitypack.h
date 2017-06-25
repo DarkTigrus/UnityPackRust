@@ -23,12 +23,12 @@ extern uint32_t unitypack_get_num_assets(const struct unitypack_assetbundle*);
 /* Returns the asset at the given index */
 extern struct unitypack_asset* unitypack_get_asset(const struct unitypack_assetbundle*, uint32_t i);
 
-/* Returns the name of the asset */
+/* Returns the name of the asset. The returned pointer must be freed with unitypack_free_rust_string() */
 extern const char* unitypack_get_asset_name(struct unitypack_asset*);
 
-/* Frees a c string created by the unitypack library */
+/* Frees a C string created by the unitypack library */
 extern void unitypack_free_rust_string(const char*);
 
-extern uint32_t unitypack_get_num_objects(struct unitypack_asset*);
+extern uint32_t unitypack_get_num_objects(const struct unitypack_asset*, const struct unitypack_assetbundle*);
 
 #endif /* UNITYPACK_H */

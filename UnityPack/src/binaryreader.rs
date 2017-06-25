@@ -16,37 +16,33 @@ pub enum Endianness {
     Big = 1,
     Little,
 }
+pub trait ReadExtras: io::Read {
+    fn read_string(&mut self) -> io::Result<String> {
+        // read bytes until zero termination
+        let mut result: String = "".to_string();
+
+        let mut k = try!(Self::read_u8(self));
+        while k != 0 {
+            result.push(k as char);
+            k = try!(Self::read_u8(self));
+        }
+        Ok(result)
+    }
+}
+impl<R: io::Read + ?Sized> ReadExtras for R {}
 
 pub trait Teller {
     fn tell(&mut self) -> u64;
-    fn read_u8(&mut self) -> io::Result<u8>;
-    fn read_string(&mut self) -> io::Result<String>;
 }
 
 impl<R> Teller for BufReader<R>
     where R: Seek+Read
 {
     fn tell(&mut self) -> u64 {
-        match self.seek(SeekFrom::Start(0)) {
+        match self.seek(SeekFrom::Current(0)) {
             Ok(p) => p,
             _ => 0,
         }
-    }
-
-    fn read_string(&mut self) -> io::Result<String> {
-        // read bytes until zero termination
-        let mut result: String = "".to_string();
-
-        let mut k = try!(Teller::read_u8(self));
-        while k != 0 {
-            result.push(k as char);
-            k = try!(Teller::read_u8(self));
-        }
-        Ok(result)
-    }
-
-    fn read_u8(&mut self) -> io::Result<u8> {
-        ReadBytesExt::read_u8(self)
     }
 }
 
@@ -132,24 +128,6 @@ impl<R> Teller for BinaryReader<R>
     fn tell(&mut self) -> u64 {
         self.cursor
     }
-
-    fn read_string(&mut self) -> io::Result<String> {
-        // read bytes until zero termination
-        let mut result: String = "".to_string();
-
-        let mut k = try!(Teller::read_u8(self));
-        self.cursor += 1;
-        while k != 0 {
-            result.push(k as char);
-            k = try!(Teller::read_u8(self));
-        }
-        Ok(result)
-    }
-
-    fn read_u8(&mut self) -> io::Result<u8> {
-        self.cursor += 1;
-        ReadBytesExt::read_u8(self)
-    }
 }
 
 impl<R> Read for BinaryReader<R>
@@ -174,17 +152,9 @@ impl<R> Seek for BinaryReader<R>
     where R: Read + Seek
 {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-        match pos {
-            SeekFrom::Start(p) => self.cursor += p,
-            SeekFrom::Current(p) |
-            SeekFrom::End(p) => {
-                if p < 0 {
-                    self.cursor -= p.abs() as u64;
-                } else {
-                    self.cursor += p as u64;
-                }
-            }
+        match self.buffer.seek(pos) {
+            Ok(p) => {self.cursor = p; return Ok(p)},
+            Err(err) => Err(err),
         }
-        self.buffer.seek(pos)
     }
 }

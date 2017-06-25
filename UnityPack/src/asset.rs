@@ -9,8 +9,11 @@ use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
 use binaryreader::Teller;
+use binaryreader::ReadExtras;
 use object::Object;
 use std::io;
+use std::io::Cursor;
+use std::io::BufReader;
 use std::io::Read;
 use std::io::Error;
 use std::io::ErrorKind;
@@ -107,18 +110,33 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn get_objects(&mut self) -> &Vec<Object> {
+    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&Vec<Object>> {
         if !self.is_loaded {
-            self.load();
+            isOptionError!(self.load(bundle));
         }
-        &self.objects
+        Ok(&self.objects)
     }
 
-    fn load(&mut self) {
+    fn load(&mut self, bundle: &mut AssetBundle) -> Option<Error> {
         if self.is_resource() {
             self.is_loaded = true;
-            return;
+            return None;
         }
 
+        match bundle.signature {
+            Signature::UnityFS(ref mut buf) => { return self.load_from_buffer(buf); },
+            Signature::UnityRaw(ref mut buf) => { return self.load_from_buffer(buf); },
+            Signature::UnityRawCompressed(ref mut buf) => { return self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice()))); },
+            _ => { return Some( Error::new(ErrorKind::InvalidData, format!("Signature not supported for loading objects: {:?}", bundle.signature)  )) },
+        }
+    }
+
+    fn load_from_buffer<R: Read+Seek>(&mut self, buffer: &mut R) -> Option<Error> {
+        let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
+
+        let metadata_size = tryOption!(buffer.read_u32::<BigEndian>());
+        println!("metadata_size: {}", metadata_size);
+
+        None
     }
 }

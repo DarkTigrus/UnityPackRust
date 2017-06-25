@@ -80,9 +80,13 @@ pub extern "C" fn unitypack_free_rust_string(s: *mut c_char) {
 }
 
 #[no_mangle]
-pub extern "C" fn unitypack_get_num_objects(ptr: *mut Asset) -> uint32_t {
-    let mut _asset = unsafe { &mut *ptr };
+pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle) -> uint32_t {
+    let mut _asset = unsafe { &mut *asset_ptr };
+    let mut _bundle = unsafe { &mut *bundle_ptr };
 
-    let objects = _asset.get_objects();
+    let objects = match _asset.get_objects(_bundle) {
+        Ok(obj) => obj,
+        _ => return 0,
+    };
     objects.len() as uint32_t
 }

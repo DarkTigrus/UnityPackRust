@@ -23,6 +23,9 @@ int main() {
         const char* asset_name = unitypack_get_asset_name(asset);
         printf("Asset %d: %s\n",i,asset_name);
         unitypack_free_rust_string(asset_name);
+
+        uint32_t num_objects = unitypack_get_num_objects(asset, assetbundle);
+        printf("There are %d objects in the asset\n",num_objects);
     }
     
     unitypack_destroy_assetbundle(assetbundle);
