@@ -8,8 +8,7 @@
 use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
-use binaryreader::Teller;
-use binaryreader::ReadExtras;
+use binaryreader::*;
 use object::Object;
 use std::io;
 use std::io::Cursor;
@@ -19,7 +18,6 @@ use std::io::Error;
 use std::io::ErrorKind;
 use std::io::Seek;
 use std::io::SeekFrom;
-use byteorder::{BigEndian, ReadBytesExt};
 use lzma;
 
 pub struct Asset {
@@ -27,6 +25,12 @@ pub struct Asset {
     bundle_offset: u64,
     objects: Vec<Object>,
     is_loaded: bool,
+    endianness: Endianness,
+    // properties
+    metadata_size: u32,
+    file_size: u32,
+    format: u32,
+    data_offset: u32,
 }
 
 impl Asset {
@@ -42,17 +46,18 @@ impl Asset {
             name: String::new(),
             objects: Vec::new(),
             is_loaded: false,
+            endianness: Endianness::Big,
+            metadata_size: 0,
+            file_size: 0,
+            format: 0,
+            data_offset: 0,
         };
 
         {
             let mut buffer = match &mut bundle.signature {
                 &mut Signature::UnityFS(ref mut buf) => {
-                    return Ok(Asset {
-                                  bundle_offset: buf.tell(),
-                                  name: String::new(),
-                                  objects: Vec::new(),
-                                  is_loaded: false,
-                              });
+                    asset.bundle_offset = buf.tell();
+                    return Ok(asset);
                 }
                 &mut Signature::UnityWeb(ref mut buf) |
                 &mut Signature::UnityRaw(ref mut buf) => buf,
@@ -67,8 +72,8 @@ impl Asset {
             let header_size: u32;
             if !is_compressed {
                 asset.name = try!(buffer.read_string());
-                header_size = try!(buffer.read_u32::<BigEndian>());
-                try!(buffer.read_u32::<BigEndian>()); // size
+                header_size = try!(buffer.read_u32(&Endianness::Big));
+                try!(buffer.read_u32(&Endianness::Big)); // size
             } else {
                 header_size = match descriptor {
                     &FSDescriptor::Raw(ref desc) => desc.asset_header_size,
@@ -131,11 +136,20 @@ impl Asset {
         }
     }
 
-    fn load_from_buffer<R: Read+Seek>(&mut self, buffer: &mut R) -> Option<Error> {
+    fn load_from_buffer<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Option<Error> {
         let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
 
-        let metadata_size = tryOption!(buffer.read_u32::<BigEndian>());
-        println!("metadata_size: {}", metadata_size);
+        self.metadata_size = tryOption!(buffer.read_u32(&self.endianness));
+        self.file_size = tryOption!(buffer.read_u32(&self.endianness));
+        self.format = tryOption!(buffer.read_u32(&self.endianness));
+		self.data_offset = tryOption!(buffer.read_u32(&self.endianness));
+        
+        if self.format >= 9 {
+            self.endianness = match tryOption!(buffer.read_u32(&self.endianness)) {
+                0 => Endianness::Little,
+                _ => Endianness::Big,
+            };
+        }
 
         None
     }

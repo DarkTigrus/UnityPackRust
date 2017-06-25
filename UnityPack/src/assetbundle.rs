@@ -213,7 +213,7 @@ impl AssetBundle {
             let n_name = tryOption!(data_reader.read_string());
             nodes.push((n_offset, n_size, n_status, n_name));
         }
-        println!("sig: {}",buffer.tell());
+        
         self.signature = Signature::UnityFS(ArchiveBlockStorageReader::new(buffer.take_buffer(),
                                                                          blocks));
 
@@ -430,6 +430,7 @@ impl<R> Read for ArchiveBlockStorageReader<R>
             try!(self.seek_to_block(&cursor));
 
             let current_stream_cursor = self.virtual_cursor - self.current_block_offset;
+            
             let current_stream_len = self.current_stream.len();
             if (current_stream_len as u64) < current_stream_cursor {
                 return Err(Error::new(ErrorKind::InvalidData,
@@ -437,11 +438,12 @@ impl<R> Read for ArchiveBlockStorageReader<R>
             }
             let remaining = (current_stream_len as u64) - current_stream_cursor;
             let read_size = cmp::min(size, remaining as usize);
+            
             if read_size == 0 {
                 return Err(Error::new(ErrorKind::InvalidData,
                                       "Error while reading block storeage"));
             }
-            let part = &self.current_stream[(current_stream_cursor as usize)..read_size];
+            let part = &self.current_stream[(current_stream_cursor as usize)..((current_stream_cursor as usize) + read_size)];
             size -= read_size;
             self.virtual_cursor += read_size as u64;
             bytes.extend(part);

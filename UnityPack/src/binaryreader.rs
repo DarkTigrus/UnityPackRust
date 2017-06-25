@@ -16,6 +16,7 @@ pub enum Endianness {
     Big = 1,
     Little,
 }
+
 pub trait ReadExtras: io::Read {
     fn read_string(&mut self) -> io::Result<String> {
         // read bytes until zero termination
@@ -28,6 +29,49 @@ pub trait ReadExtras: io::Read {
         }
         Ok(result)
     }
+
+    fn read_u16(&mut self, endiannes: &Endianness) -> io::Result<u16> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_u16::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_u16::<BigEndian>(self),
+        }
+    }
+
+    fn read_i16(&mut self, endiannes: &Endianness) -> io::Result<i16> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_i16::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_i16::<BigEndian>(self),
+        }
+    }
+
+    fn read_u32(&mut self, endiannes: &Endianness) -> io::Result<u32> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_u32::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_u32::<BigEndian>(self),
+        }
+    }
+
+    fn read_i32(&mut self, endiannes: &Endianness) -> io::Result<i32> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_i32::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_i32::<BigEndian>(self),
+        }
+    }
+
+    fn read_u64(&mut self, endiannes: &Endianness) -> io::Result<u64> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_u64::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_u64::<BigEndian>(self),
+        }
+    }
+
+    fn read_i64(&mut self, endiannes: &Endianness) -> io::Result<i64> {
+        match endiannes {
+            &Endianness::Little => ReadBytesExt::read_i64::<LittleEndian>(self),
+            &Endianness::Big => ReadBytesExt::read_i64::<BigEndian>(self),
+        }
+    }
+    
 }
 impl<R: io::Read + ?Sized> ReadExtras for R {}
 
@@ -72,44 +116,34 @@ impl<R> BinaryReader<R>
         self.buffer.read_i8()
     }
 
-    pub fn read_u32(&mut self) -> io::Result<u32> {
-        self.cursor += 4;
-        if self.endianness == Endianness::Little {
-            return self.buffer.read_u32::<LittleEndian>();
-        }
-        self.buffer.read_u32::<BigEndian>()
-    }
-
-    pub fn read_u64(&mut self) -> io::Result<u64> {
-        self.cursor += 8;
-        if self.endianness == Endianness::Little {
-            return self.buffer.read_u64::<LittleEndian>();
-        }
-        self.buffer.read_u64::<BigEndian>()
+    pub fn read_u16(&mut self) -> io::Result<u16> {
+        self.cursor += 2;
+        ReadExtras::read_u16(&mut self.buffer, &self.endianness)
     }
 
     pub fn read_i16(&mut self) -> io::Result<i16> {
         self.cursor += 2;
-        if self.endianness == Endianness::Little {
-            return self.buffer.read_i16::<LittleEndian>();
-        }
-        self.buffer.read_i16::<BigEndian>()
+        ReadExtras::read_i16(&mut self.buffer, &self.endianness)
+    }
+
+    pub fn read_u32(&mut self) -> io::Result<u32> {
+        self.cursor += 4;
+        ReadExtras::read_u32(&mut self.buffer, &self.endianness)
     }
 
     pub fn read_i32(&mut self) -> io::Result<i32> {
         self.cursor += 4;
-        if self.endianness == Endianness::Little {
-            return self.buffer.read_i32::<LittleEndian>();
-        }
-        self.buffer.read_i32::<BigEndian>()
+        ReadExtras::read_i32(&mut self.buffer, &self.endianness)
+    }
+
+    pub fn read_u64(&mut self) -> io::Result<u64> {
+        self.cursor += 8;
+        ReadExtras::read_u64(&mut self.buffer, &self.endianness)
     }
 
     pub fn read_i64(&mut self) -> io::Result<i64> {
         self.cursor += 8;
-        if self.endianness == Endianness::Little {
-            return self.buffer.read_i64::<LittleEndian>();
-        }
-        self.buffer.read_i64::<BigEndian>()
+        ReadExtras::read_i64(&mut self.buffer, &self.endianness)
     }
 
     pub fn read_bytes(&mut self, bytes_to_read: usize) -> io::Result<Vec<u8>> {
