@@ -30,6 +30,11 @@ pub trait ReadExtras: io::Read {
         Ok(result)
     }
 
+    fn read_bool(&mut self) -> io::Result<bool> {
+        let b = try!(Self::read_u8(self));
+        Ok(b == 0)
+    }
+
     fn read_u16(&mut self, endiannes: &Endianness) -> io::Result<u16> {
         match endiannes {
             &Endianness::Little => ReadBytesExt::read_u16::<LittleEndian>(self),

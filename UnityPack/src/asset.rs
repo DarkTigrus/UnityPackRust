@@ -8,6 +8,7 @@
 use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
+use typetree::TypeMetadata;
 use binaryreader::*;
 use object::Object;
 use std::io;
@@ -26,6 +27,7 @@ pub struct Asset {
     objects: Vec<Object>,
     is_loaded: bool,
     endianness: Endianness,
+    tree: Option<TypeMetadata>,
     // properties
     metadata_size: u32,
     file_size: u32,
@@ -47,6 +49,7 @@ impl Asset {
             objects: Vec::new(),
             is_loaded: false,
             endianness: Endianness::Big,
+            tree: None,
             metadata_size: 0,
             file_size: 0,
             format: 0,
@@ -150,6 +153,9 @@ impl Asset {
                 _ => Endianness::Big,
             };
         }
+
+        let tree = tryOption!(TypeMetadata::new(buffer, self.format, &self.endianness));
+        self.tree = Some(tree);
 
         None
     }

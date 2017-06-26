@@ -15,6 +15,8 @@ mod assetbundle;
 mod asset;
 mod object;
 mod binaryreader;
+mod typetree;
+mod enums;
 pub mod unitypack_c;
 
 #[cfg(test)]
