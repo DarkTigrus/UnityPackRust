@@ -453,6 +453,15 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
     fn tell(&mut self) -> u64 {
         self.virtual_cursor
     }
+
+    fn align(&mut self) {
+
+        let old = self.tell() as i64;
+        let new = (old + 3) & -4;
+        if new > old {
+            self.seek(SeekFrom::Start(new as u64));
+        }
+    }
 }
 
 impl<R> Seek for ArchiveBlockStorageReader<R>

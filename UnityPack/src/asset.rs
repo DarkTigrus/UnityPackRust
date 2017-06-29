@@ -10,21 +10,16 @@ use assetbundle::Signature;
 use assetbundle::FSDescriptor;
 use typetree::TypeMetadata;
 use binaryreader::*;
-use object::Object;
+use object::ObjectInfo;
+use std::collections::HashMap;
 use std::io;
-use std::io::Cursor;
-use std::io::BufReader;
-use std::io::Read;
-use std::io::Error;
-use std::io::ErrorKind;
-use std::io::Seek;
-use std::io::SeekFrom;
+use std::io::{Cursor, Result, BufReader, Read, Seek, SeekFrom, Error, ErrorKind};
 use lzma;
 
 pub struct Asset {
     pub name: String,
     bundle_offset: u64,
-    objects: Vec<Object>,
+    objects: HashMap<u64,Object>,
     is_loaded: bool,
     endianness: Endianness,
     tree: Option<TypeMetadata>,
@@ -33,10 +28,11 @@ pub struct Asset {
     file_size: u32,
     format: u32,
     data_offset: u32,
+    long_object_ids: bool,
 }
 
 impl Asset {
-    pub fn new(bundle: &mut AssetBundle) -> io::Result<Asset> {
+    pub fn new(bundle: &mut AssetBundle) -> Result<Asset> {
 
         let is_compressed = bundle.is_compressed();
         let ref descriptor = bundle.descriptor;
@@ -46,7 +42,7 @@ impl Asset {
         let mut asset = Asset {
             bundle_offset: 0,
             name: String::new(),
-            objects: Vec::new(),
+            objects: HashMap::new(),
             is_loaded: false,
             endianness: Endianness::Big,
             tree: None,
@@ -54,6 +50,7 @@ impl Asset {
             file_size: 0,
             format: 0,
             data_offset: 0,
+            long_object_ids: false,
         };
 
         {
@@ -118,7 +115,7 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&Vec<Object>> {
+    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&HashMap<u64, ObjectInfo>> {
         if !self.is_loaded {
             isOptionError!(self.load(bundle));
         }
@@ -156,7 +153,61 @@ impl Asset {
 
         let tree = tryOption!(TypeMetadata::new(buffer, self.format, &self.endianness));
         self.tree = Some(tree);
+        
+        if (self.format >= 7) && (self.format <= 13) {
+            self.long_object_ids = tryOption!(buffer.read_u32(&self.endianness)) != 0
+        }
 
+        let num_objects = tryOption!(buffer.read_u32(&self.endianness));
+        
+        for _ in 0..num_objects {
+            if self.format >= 14 {
+                buffer.align();
+            }
+            let obj = ObjectInfo::new(self);
+            obj.load(buffer);
+            self.register_object(obj);
+        }
+
+        if self.format >= 11 {
+            let num_adds = tryOption!(buffer.read_u32(&self.endianness));
+            for _ in 0..num_adds {
+                if self.format >= 14 {
+                    buffer.align();
+                }
+                let id = self.read_id(buffer);
+                let add = tryOption!(buffer.read_i32(&self.endianness));
+                self.adds.push((id, add));
+            }
+        }
+
+        if self.format >= 6 {
+            let num_refs = tryOption!(buffer.read_u32(&self.endianness));
+            for _ in 0..num_refs {
+                let asset_ref = AssetRef::new(self);
+                asset_ref.load(buffer);
+                self.asset_refs.push(asset_ref);
+            }
+        }
+        
+        let unk_string = tryOption!(buffer.read_string());
+        
+        if unk_string != "" {
+            return Some(Error::new(ErrorKind::InvalidData, format!("Error while loading Asset, ending string is not empty but {:?}", unk_string)));
+        }
+
+        self.is_loaded = true;
         None
+    }
+
+    fn register_object(&mut self, obj: ObjectInfo) {
+        // TODO
+    }
+
+    fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Result<i64> {
+        if self.format >= 14 {
+            return try!(buffer.read_i64(&self.endianness));
+        }
+        return try!(buffer.read_i32(&self.endianness)) as i64;
     }
 }

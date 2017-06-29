@@ -4,10 +4,7 @@
  *
  * All rights reserved 2017
  */
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::BufReader;
+use std::io::{Read, Seek, SeekFrom, BufReader};
 use std::io;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 
@@ -28,6 +25,10 @@ pub trait ReadExtras: io::Read {
             k = try!(Self::read_u8(self));
         }
         Ok(result)
+    }
+
+    fn read_u8(&mut self) -> io::Result<u8> {
+        ReadBytesExt::read_u8(self)
     }
 
     fn read_bool(&mut self) -> io::Result<bool> {
@@ -82,15 +83,24 @@ impl<R: io::Read + ?Sized> ReadExtras for R {}
 
 pub trait Teller {
     fn tell(&mut self) -> u64;
+    fn align(&mut self);
 }
 
 impl<R> Teller for BufReader<R>
-    where R: Seek+Read
+    where R: Seek
 {
     fn tell(&mut self) -> u64 {
         match self.seek(SeekFrom::Current(0)) {
             Ok(p) => p,
             _ => 0,
+        }
+    }
+
+    fn align(&mut self) {
+        let old = self.tell() as i64;
+        let new = (old + 3) & -4;
+        if new > old {
+            self.seek(SeekFrom::Start(new as u64));
         }
     }
 }
@@ -166,6 +176,15 @@ impl<R> Teller for BinaryReader<R>
 {
     fn tell(&mut self) -> u64 {
         self.cursor
+    }
+
+    fn align(&mut self) {
+
+        let old = self.tell() as i64;
+        let new = (old + 3) & -4;
+        if new > old {
+            self.seek(SeekFrom::Start(new as u64));
+        }
     }
 }
 
