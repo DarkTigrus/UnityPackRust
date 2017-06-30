@@ -6,18 +6,21 @@
  */
 
 use binaryreader::Teller;
-use std::io::{Result, Read, Seek};
+use std::io::{Result, Read, Seek, BufReader};
 use binaryreader::ReadExtras;
 use enums::{RuntimePlatform, get_runtime_platform};
 use binaryreader::Endianness;
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::fs::File;
+use resources;
 
 pub struct TypeMetadata {
     generator_version: String,
     target_platform: RuntimePlatform,
     class_ids: Vec<i32>,
     hashes: HashMap<i32, Vec<u8>>,
-    type_trees: HashMap<i32, TypeTree>,
+    pub type_trees: HashMap<i64, Rc<TypeTree>>,
 }
 
 pub struct TypeTree {
@@ -35,6 +38,14 @@ impl TypeTree {
     pub fn load<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) {
 
     }
+}
+
+lazy_static! {
+    pub static ref default_type_meta_data: Result<TypeMetadata> = {
+        let file = try!(File::open(resources::RESOURCE_PATH_STRUCT));
+        let mut bin_reader = BufReader::new(file);
+        TypeMetadata::new(&mut bin_reader, 15, &Endianness::Big)
+    };
 }
 
 impl TypeMetadata {
@@ -89,7 +100,7 @@ impl TypeMetadata {
                 if has_type_trees {
                     let mut tree = try!(TypeTree::new(format));
                     tree.load(buffer);
-                    result.type_trees.insert(class_id, tree);
+                    result.type_trees.insert(class_id as i64, Rc::new(tree));
                 }
             }
 
@@ -99,7 +110,7 @@ impl TypeMetadata {
                 let class_id = try!(buffer.read_i32(endianness));
                 let mut tree = try!(TypeTree::new(format));
                 tree.load(buffer);
-                result.type_trees.insert(class_id, tree);
+                result.type_trees.insert(class_id as i64, Rc::new(tree));
             }
         }
 

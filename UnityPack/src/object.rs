@@ -5,19 +5,30 @@
  * All rights reserved 2017
  */
 use asset::Asset;
-use std::io::{Read, Seek, Error};
+use std::io::{Read, Seek, Error, Result};
 use binaryreader::Teller;
 
-pub struct ObjectInfo {}
+pub struct ObjectInfo {
+    pub type_id: i64,
+}
 
 impl ObjectInfo {
 
-    pub fn new(asset: &mut Asset) -> ObjectInfo {
-        let res = ObjectInfo{};
-        return res;
+    pub fn new<R: Read+Seek+ Teller>(asset: &mut Asset, buffer: &mut R) -> Result<ObjectInfo> {
+        let res = ObjectInfo{
+            type_id: 0,
+        };
+        
+        
+        let path_id = try!(res.read_id(buffer));
+        
+        
+        
+        
+        return Ok(res);
     }
 
-    pub fn load<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Option<Error> {
-        None
+    fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) {
+
     }
 }

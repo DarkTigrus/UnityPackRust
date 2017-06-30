@@ -10,6 +10,9 @@ extern crate lz4_compress;
 extern crate lzma;
 
 #[macro_use]
+extern crate lazy_static;
+
+#[macro_use]
 mod unitymacros;
 mod assetbundle;
 mod asset;
@@ -17,6 +20,7 @@ mod object;
 mod binaryreader;
 mod typetree;
 mod enums;
+mod resources;
 pub mod unitypack_c;
 
 #[cfg(test)]

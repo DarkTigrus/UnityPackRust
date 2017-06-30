@@ -8,21 +8,24 @@
 use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
-use typetree::TypeMetadata;
+use typetree::{TypeMetadata, TypeTree, default_type_meta_data};
 use binaryreader::*;
 use object::ObjectInfo;
 use std::collections::HashMap;
 use std::io;
 use std::io::{Cursor, Result, BufReader, Read, Seek, SeekFrom, Error, ErrorKind};
 use lzma;
+use std::rc::Rc;
 
 pub struct Asset {
     pub name: String,
     bundle_offset: u64,
-    objects: HashMap<u64,Object>,
+    objects: HashMap<u64,ObjectInfo>,
     is_loaded: bool,
     endianness: Endianness,
     tree: Option<TypeMetadata>,
+    types: HashMap<i64, Rc<TypeTree>>,
+    asset_refs: Vec<AssetOrRef>,
     // properties
     metadata_size: u32,
     file_size: u32,
@@ -46,6 +49,9 @@ impl Asset {
             is_loaded: false,
             endianness: Endianness::Big,
             tree: None,
+            types: HashMap::new(),
+            /// when requesting frist element it should be asset itself
+            asset_refs: Vec::new(),
             metadata_size: 0,
             file_size: 0,
             format: 0,
@@ -164,9 +170,8 @@ impl Asset {
             if self.format >= 14 {
                 buffer.align();
             }
-            let obj = ObjectInfo::new(self);
-            obj.load(buffer);
-            self.register_object(obj);
+            let obj = tryOption!(ObjectInfo::new(self, buffer));
+            tryOption!(self.register_object(obj));
         }
 
         if self.format >= 11 {
@@ -184,8 +189,7 @@ impl Asset {
         if self.format >= 6 {
             let num_refs = tryOption!(buffer.read_u32(&self.endianness));
             for _ in 0..num_refs {
-                let asset_ref = AssetRef::new(self);
-                asset_ref.load(buffer);
+                let asset_ref = AssetRef::new(buffer);
                 self.asset_refs.push(asset_ref);
             }
         }
@@ -200,14 +204,63 @@ impl Asset {
         None
     }
 
-    fn register_object(&mut self, obj: ObjectInfo) {
-        // TODO
+    fn register_object(&mut self, obj: ObjectInfo) -> Option<Error> {
+        let tree = match self.tree {
+            Some(t) => t,
+            None => return None,
+        };
+        match tree.type_trees.get(&obj.type_id) {
+            Some(oType) => {self.types.insert(obj.type_id, oType.clone())},
+            None => {
+                match self.types.get(&obj.type_id) {
+                    Some(_) => {},
+                    None => {
+                        let trees = tryOption!(default_type_meta_data).type_trees;
+                        match trees.get(obj.class_id) {
+                            Some(o) => self.types.insert(obj.type_id, o),
+                            None => {
+                                // log warning
+                                println!("Warning: {} is absent from structs.dat", obj.class_id);
+                                // self.types.insert(obj.type_id, None)
+                            },
+                        };
+                    },
+                }
+            },
+        };
+
+        match self.objects.get(obj.path_id) {
+            Some(_) => return Some(Error::new(ErrorKind::InvalidData, format!("Duplicate asset object: {} (path_id={})", obj, obj.path_id))),
+            None => {},
+        }
+        None
     }
 
     fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Result<i64> {
         if self.format >= 14 {
-            return try!(buffer.read_i64(&self.endianness));
+            return buffer.read_i64(&self.endianness);
         }
-        return try!(buffer.read_i32(&self.endianness)) as i64;
+        let result = try!(buffer.read_i32(&self.endianness)) as i64;
+        return Ok(result);
     }
+}
+
+struct AssetRef {
+    asset_path: String,
+}
+
+impl AssetRef {
+    pub fn new<R: Read+Seek+ Teller>(buffer: &mut R) -> Result<AssetRef> {
+        let asset_path = try!(buffer.read_string());
+        
+        
+        Ok(AssetRef {
+            asset_path: asset_path,
+        })
+    }
+}
+
+enum AssetOrRef {
+    Asset(Asset),
+    AssetRef(AssetRef),
 }

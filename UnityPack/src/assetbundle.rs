@@ -268,6 +268,7 @@ impl AssetBundle {
         };
         
         for _ in 0..num_assets {
+            // TODO: asset loading for raw
             //let asset = tryOption!(Asset::new(&mut buffer, self));
             //self.assets.push(asset);
         }
