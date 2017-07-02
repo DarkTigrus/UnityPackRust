@@ -33,7 +33,7 @@ pub trait ReadExtras: io::Read {
 
     fn read_bool(&mut self) -> io::Result<bool> {
         let b = try!(Self::read_u8(self));
-        Ok(b == 0)
+        Ok(b != 0)
     }
 
     fn read_u16(&mut self, endiannes: &Endianness) -> io::Result<u16> {
