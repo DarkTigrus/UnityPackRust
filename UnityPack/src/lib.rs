@@ -8,6 +8,7 @@ extern crate libc;
 extern crate byteorder;
 extern crate lz4_compress;
 extern crate lzma;
+extern crate uuid;
 
 #[macro_use]
 extern crate lazy_static;

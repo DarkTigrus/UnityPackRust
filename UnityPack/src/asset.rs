@@ -8,24 +8,26 @@
 use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
-use typetree::{TypeMetadata, TypeTree, default_type_meta_data};
+use typetree::{TypeMetadata, TypeNode, default_type_metadata};
 use binaryreader::*;
 use object::ObjectInfo;
 use std::collections::HashMap;
 use std::io;
 use std::io::{Cursor, Result, BufReader, Read, Seek, SeekFrom, Error, ErrorKind};
 use lzma;
-use std::rc::Rc;
+use uuid::Uuid;
+use std::sync::Arc;
 
 pub struct Asset {
     pub name: String,
     bundle_offset: u64,
-    objects: HashMap<u64,ObjectInfo>,
+    objects: HashMap<i64,ObjectInfo>,
     is_loaded: bool,
     endianness: Endianness,
     tree: Option<TypeMetadata>,
-    types: HashMap<i64, Rc<TypeTree>>,
-    asset_refs: Vec<AssetOrRef>,
+    types: HashMap<i64, Arc<TypeNode>>,
+    asset_refs: Vec<AssetRef>,
+    adds: Vec<(i64, i32)>,
     // properties
     metadata_size: u32,
     file_size: u32,
@@ -50,8 +52,9 @@ impl Asset {
             endianness: Endianness::Big,
             tree: None,
             types: HashMap::new(),
-            /// when requesting frist element it should be asset itself
+            // when requesting frist element it should be asset itself
             asset_refs: Vec::new(),
+            adds: Vec::new(),
             metadata_size: 0,
             file_size: 0,
             format: 0,
@@ -121,7 +124,7 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&HashMap<u64, ObjectInfo>> {
+    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&HashMap<i64, ObjectInfo>> {
         if !self.is_loaded {
             isOptionError!(self.load(bundle));
         }
@@ -171,7 +174,7 @@ impl Asset {
                 buffer.align();
             }
             let obj = tryOption!(ObjectInfo::new(self, buffer));
-            tryOption!(self.register_object(obj));
+            isOption!(self.register_object(obj));
         }
 
         if self.format >= 11 {
@@ -180,7 +183,7 @@ impl Asset {
                 if self.format >= 14 {
                     buffer.align();
                 }
-                let id = self.read_id(buffer);
+                let id = tryOption!(self.read_id(buffer));
                 let add = tryOption!(buffer.read_i32(&self.endianness));
                 self.adds.push((id, add));
             }
@@ -189,7 +192,7 @@ impl Asset {
         if self.format >= 6 {
             let num_refs = tryOption!(buffer.read_u32(&self.endianness));
             for _ in 0..num_refs {
-                let asset_ref = AssetRef::new(buffer);
+                let asset_ref = tryOption!(AssetRef::new(buffer, &self.endianness));
                 self.asset_refs.push(asset_ref);
             }
         }
@@ -205,31 +208,35 @@ impl Asset {
     }
 
     fn register_object(&mut self, obj: ObjectInfo) -> Option<Error> {
-        let tree = match self.tree {
-            Some(t) => t,
-            None => return None,
+        let ref tree = match &self.tree {
+            &Some(ref t) => t,
+            &None => return None,
         };
         match tree.type_trees.get(&obj.type_id) {
-            Some(oType) => {self.types.insert(obj.type_id, oType.clone())},
+            Some(oType) => {
+                self.types.insert(obj.type_id, oType.clone());
+                },
             None => {
                 match self.types.get(&obj.type_id) {
                     Some(_) => {},
                     None => {
-                        let trees = tryOption!(default_type_meta_data).type_trees;
-                        match trees.get(obj.class_id) {
-                            Some(o) => self.types.insert(obj.type_id, o),
+                        let ref trees = tryOption!(default_type_metadata()).type_trees;
+                        match trees.get(&(obj.class_id as i64)) {
+                            Some(o) => {
+                                self.types.insert(obj.type_id, o.clone());
+                                },
                             None => {
                                 // log warning
-                                println!("Warning: {} is absent from structs.dat", obj.class_id);
+                                println!("Warning: {:?} is absent from structs.dat", obj.class_id);
                                 // self.types.insert(obj.type_id, None)
                             },
                         };
                     },
-                }
+                };
             },
         };
 
-        match self.objects.get(obj.path_id) {
+        match self.objects.get(&obj.path_id) {
             Some(_) => return Some(Error::new(ErrorKind::InvalidData, format!("Duplicate asset object: {} (path_id={})", obj, obj.path_id))),
             None => {},
         }
@@ -247,15 +254,29 @@ impl Asset {
 
 struct AssetRef {
     asset_path: String,
+    guid: Uuid,
+    asset_type: i32,
+    file_path: String,
+    // probably want to add a reference to the calling Asset itself
 }
 
 impl AssetRef {
-    pub fn new<R: Read+Seek+ Teller>(buffer: &mut R) -> Result<AssetRef> {
+    pub fn new<R: Read+Seek+ Teller>(buffer: &mut R, endianness: &Endianness) -> Result<AssetRef> {
         let asset_path = try!(buffer.read_string());
-        
-        
+        let mut uuid_buffer = [0; 16];
+        try!(buffer.read_exact(&mut uuid_buffer));
+        let guid = match Uuid::from_bytes(&uuid_buffer) {
+            Ok(uuid) => uuid,
+            _ => return Err(Error::new(ErrorKind::InvalidData, "Failed to parse UUID data")),
+        };
+        let asset_type = try!(buffer.read_i32(endianness));
+        let file_path = try!(buffer.read_string());
+
         Ok(AssetRef {
             asset_path: asset_path,
+            guid: guid,
+            asset_type: asset_type,
+            file_path: file_path,
         })
     }
 }

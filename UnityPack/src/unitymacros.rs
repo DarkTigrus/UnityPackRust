@@ -20,6 +20,13 @@ macro_rules! isOptionError {
     });
 }
 
+macro_rules! isOption {
+    ($e:expr) => (match $e {
+        Some(err) => return Some(err),
+		_ => {}
+    });
+}
+
 macro_rules! tryVoid {
     ($e:expr) => (match $e {
         Err(err) => return Some(err),
