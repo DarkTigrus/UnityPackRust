@@ -23,17 +23,17 @@ pub struct Asset {
     bundle_offset: u64,
     objects: HashMap<i64,ObjectInfo>,
     is_loaded: bool,
-    endianness: Endianness,
-    tree: Option<TypeMetadata>,
+    pub endianness: Endianness,
+    pub tree: Option<TypeMetadata>,
     types: HashMap<i64, Arc<TypeNode>>,
     asset_refs: Vec<AssetRef>,
     adds: Vec<(i64, i32)>,
     // properties
     metadata_size: u32,
     file_size: u32,
-    format: u32,
-    data_offset: u32,
-    long_object_ids: bool,
+    pub format: u32,
+    pub data_offset: u32,
+    pub long_object_ids: bool,
 }
 
 impl Asset {
@@ -243,7 +243,7 @@ impl Asset {
         None
     }
 
-    fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Result<i64> {
+    pub fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Result<i64> {
         if self.format >= 14 {
             return buffer.read_i64(&self.endianness);
         }

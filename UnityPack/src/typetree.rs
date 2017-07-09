@@ -56,7 +56,7 @@ pub fn default_type_strings() -> Result<&'static Vec<u8>> {
 pub struct TypeMetadata {
     generator_version: String,
     target_platform: RuntimePlatform,
-    class_ids: Vec<i32>,
+    pub class_ids: Vec<i32>,
     hashes: HashMap<i32, Vec<u8>>,
     pub type_trees: HashMap<i64, Arc<TypeNode>>,
 }
@@ -168,7 +168,7 @@ impl TypeNode {
 
         for _ in 0..num_nodes {
             // create root element
-            let version = try!(buf.read_i16(endianness)); // version, unused
+            let _ = try!(buf.read_i16(endianness)); // version, unused
             let depth = try!(buf.read_u8());
 
             let is_array = try!(buf.read_u8()) == 1;
@@ -178,7 +178,6 @@ impl TypeNode {
             let index = try!(buf.read_u32(endianness));
             let flags = try!(buf.read_i32(endianness));
 
-            println!("{}: {}",field_name,type_name);
             let node = TypeNode {
                 type_name: type_name,
                 field_name: field_name,
