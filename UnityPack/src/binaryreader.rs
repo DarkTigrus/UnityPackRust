@@ -7,11 +7,32 @@
 use std::io::{Read, Seek, SeekFrom, BufReader};
 use std::io;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use std::fmt;
 
 #[derive(PartialEq, Eq)]
 pub enum Endianness {
     Big = 1,
-    Little,
+    Little = 0,
+}
+
+impl fmt::Display for Endianness {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+           Endianness::Big => write!(f, "Big endian"),
+           Endianness::Little => write!(f, "Little endian"),
+        }
+    }
+}
+
+pub struct BytesVector(pub Vec<u8>);
+
+impl fmt::Display for BytesVector {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        try!(write!(f, "["));
+        for v in &self.0 { try!(write!(f, " {}", v)); }
+        try!(write!(f, "]"));
+        Ok(())
+    }
 }
 
 pub trait ReadExtras: io::Read {
@@ -37,44 +58,44 @@ pub trait ReadExtras: io::Read {
     }
 
     fn read_u16(&mut self, endiannes: &Endianness) -> io::Result<u16> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_u16::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_u16::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_u16::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_u16::<BigEndian>(self),
         }
     }
 
     fn read_i16(&mut self, endiannes: &Endianness) -> io::Result<i16> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_i16::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_i16::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_i16::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_i16::<BigEndian>(self),
         }
     }
 
     fn read_u32(&mut self, endiannes: &Endianness) -> io::Result<u32> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_u32::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_u32::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_u32::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_u32::<BigEndian>(self),
         }
     }
 
     fn read_i32(&mut self, endiannes: &Endianness) -> io::Result<i32> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_i32::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_i32::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_i32::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_i32::<BigEndian>(self),
         }
     }
 
     fn read_u64(&mut self, endiannes: &Endianness) -> io::Result<u64> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_u64::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_u64::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_u64::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_u64::<BigEndian>(self),
         }
     }
 
     fn read_i64(&mut self, endiannes: &Endianness) -> io::Result<i64> {
-        match endiannes {
-            &Endianness::Little => ReadBytesExt::read_i64::<LittleEndian>(self),
-            &Endianness::Big => ReadBytesExt::read_i64::<BigEndian>(self),
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_i64::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_i64::<BigEndian>(self),
         }
     }
     
@@ -183,7 +204,7 @@ impl<R> Teller for BinaryReader<R>
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
-            self.seek(SeekFrom::Start(new as u64));
+            let _ = self.seek(SeekFrom::Start(new as u64));
         }
     }
 }

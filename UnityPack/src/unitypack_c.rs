@@ -86,7 +86,10 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
 
     let objects = match _asset.get_objects(_bundle) {
         Ok(obj) => obj,
-        _ => return 0,
+        Err(err) => {
+            println!("{}",err);
+            return 0;
+        },
     };
     objects.len() as uint32_t
 }

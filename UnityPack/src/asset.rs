@@ -168,7 +168,7 @@ impl Asset {
         }
 
         let num_objects = tryOption!(buffer.read_u32(&self.endianness));
-        
+
         for _ in 0..num_objects {
             if self.format >= 14 {
                 buffer.align();

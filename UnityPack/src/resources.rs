@@ -5,4 +5,5 @@
  * All rights reserved 2017
  */
 
- pub const RESOURCE_PATH_STRUCT: &str = "structs.dat";
+pub const RESOURCE_PATH_STRUCT: &str = "res/structs.dat";
+pub const RESOURCE_PATH_STRINGS: &str = "res/strings.dat";
