@@ -6,7 +6,7 @@
  */
 use asset::Asset;
 use std::io::{Read, Seek, Error, Result, ErrorKind};
-use binaryreader::{Teller,Endianness, ReadExtras};
+use binaryreader::{Teller, ReadExtras};
 use std::fmt;
 
 pub struct ObjectInfo {
@@ -63,13 +63,7 @@ impl ObjectInfo {
                 let _ = try!(buffer.read_u8()); // unknown
             }
         }
-        
-        
-        //
-        
-        // TODO
-        
-        
+
         return Ok(res);
     }
 
@@ -78,6 +72,10 @@ impl ObjectInfo {
             return buffer.read_i64(&asset.endianness);
         }
         return asset.read_id(buffer);
+    }
+
+    pub fn get_type(&self) -> String {
+        String::new()
     }
 }
 

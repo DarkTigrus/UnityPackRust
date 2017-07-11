@@ -212,9 +212,10 @@ impl Asset {
             &Some(ref t) => t,
             &None => return None,
         };
+        
         match tree.type_trees.get(&obj.type_id) {
-            Some(oType) => {
-                self.types.insert(obj.type_id, oType.clone());
+            Some(o_type) => {
+                self.types.insert(obj.type_id, o_type.clone());
                 },
             None => {
                 match self.types.get(&obj.type_id) {
@@ -240,6 +241,8 @@ impl Asset {
             Some(_) => return Some(Error::new(ErrorKind::InvalidData, format!("Duplicate asset object: {} (path_id={})", obj, obj.path_id))),
             None => {},
         }
+
+        self.objects.insert(obj.path_id, obj);
         None
     }
 

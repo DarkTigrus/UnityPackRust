@@ -7,7 +7,7 @@
 
 use binaryreader::Teller;
 use std::io::{Result, Read, Seek, BufReader, Cursor, Error, ErrorKind};
-use binaryreader::{ReadExtras, Endianness, BytesVector};
+use binaryreader::{ReadExtras, Endianness};
 use enums::{RuntimePlatform, get_runtime_platform};
 use std::collections::HashMap;
 use std::sync::Arc;

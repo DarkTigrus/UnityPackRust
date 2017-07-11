@@ -24,17 +24,6 @@ impl fmt::Display for Endianness {
     }
 }
 
-pub struct BytesVector(pub Vec<u8>);
-
-impl fmt::Display for BytesVector {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        try!(write!(f, "["));
-        for v in &self.0 { try!(write!(f, " {}", v)); }
-        try!(write!(f, "]"));
-        Ok(())
-    }
-}
-
 pub trait ReadExtras: io::Read {
     fn read_string(&mut self) -> io::Result<String> {
         // read bytes until zero termination
@@ -121,7 +110,7 @@ impl<R> Teller for BufReader<R>
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
-            self.seek(SeekFrom::Start(new as u64));
+            let _ =self.seek(SeekFrom::Start(new as u64));
         }
     }
 }

@@ -7,14 +7,20 @@
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
-use std::mem::transmute;
+use std::mem::{transmute, forget};
 use assetbundle::*;
 use asset::*;
+use object::ObjectInfo;
 use std::ptr;
 use libc;
 use libc::uint32_t;
 
-// C API
+#[repr(C)]
+pub struct ObjectArray {
+    array: *const libc::c_void,
+    length: libc::size_t,
+}
+
 #[no_mangle]
 pub extern "C" fn unitypack_load_assetbundle_from_file(file_path: *const c_char)
                                                        -> *const libc::c_void {
@@ -92,4 +98,42 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
         },
     };
     objects.len() as uint32_t
+}
+
+pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle, obj_type: *const c_char)  -> ObjectArray {
+    let mut _asset = unsafe { &mut *asset_ptr };
+    let mut _bundle = unsafe { &mut *bundle_ptr };
+
+    let obj_type_str = unsafe { CStr::from_ptr(obj_type).to_str().unwrap() };
+
+    let objects = match _asset.get_objects(_bundle) {
+        Ok(obj) => obj,
+        Err(err) => {
+            println!("{}",err);
+            return ObjectArray {
+                array: ptr::null(),
+                length: 0,
+            };
+        },
+    };
+
+    let mut v: Vec<*const c_char> = Vec::new();
+
+    for obj in objects.values() {
+        if obj.get_type() == obj_type_str {
+            let obj_ptr: *const ObjectInfo = obj;
+            unsafe {
+                v.push(transmute(obj_ptr));
+            }
+        }
+    }
+
+    let result = ObjectArray {
+        array: v.as_ptr() as *mut libc::c_void,
+        length: v.len() as _,
+    };
+
+    forget(v);
+
+    result
 }
