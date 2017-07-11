@@ -100,6 +100,7 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
     objects.len() as uint32_t
 }
 
+#[no_mangle]
 pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle, obj_type: *const c_char)  -> ObjectArray {
     let mut _asset = unsafe { &mut *asset_ptr };
     let mut _bundle = unsafe { &mut *bundle_ptr };
@@ -117,7 +118,7 @@ pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_
         },
     };
 
-    let mut v: Vec<*const c_char> = Vec::new();
+    let mut v: Vec<*const libc::c_void> = Vec::new();
 
     for obj in objects.values() {
         if obj.get_type() == obj_type_str {
@@ -128,12 +129,14 @@ pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_
         }
     }
 
+    let boxed_slice: Box<[*const libc::c_void]> = v.into_boxed_slice();
+
     let result = ObjectArray {
-        array: v.as_ptr() as *mut libc::c_void,
-        length: v.len() as _,
+        array: boxed_slice.as_ptr() as *const libc::c_void,
+        length: boxed_slice.len() as _,
     };
 
-    forget(v);
-
+    forget(boxed_slice);
+        
     result
 }

@@ -4,6 +4,7 @@
  *
  * All rights reserved 2017
  */
+#include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <unitypack.h>
@@ -26,6 +27,12 @@ int main() {
 
         uint32_t num_objects = unitypack_get_num_objects(asset, assetbundle);
         printf("There are %d objects in the asset\n",num_objects);
+
+        struct unitypack_object_array object_array = unitypack_get_objects_with_type(asset, assetbundle, "GameObject");
+
+        printf("%p - %zu\n",object_array.array, object_array.length);
+
+        unitypack_free_object_array(&object_array);
     }
     
     unitypack_destroy_assetbundle(assetbundle);
