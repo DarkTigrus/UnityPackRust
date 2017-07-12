@@ -460,7 +460,7 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
-            self.seek(SeekFrom::Start(new as u64));
+            let _ = self.seek(SeekFrom::Start(new as u64));
         }
     }
 }

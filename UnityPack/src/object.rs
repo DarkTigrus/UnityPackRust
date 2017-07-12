@@ -5,9 +5,11 @@
  * All rights reserved 2017
  */
 use asset::Asset;
-use std::io::{Read, Seek, Error, Result, ErrorKind};
+use std::io::{Read, Seek, SeekFrom, Error, Result, ErrorKind, BufReader, Cursor};
 use binaryreader::{Teller, ReadExtras};
 use std::fmt;
+use resources;
+use assetbundle::{AssetBundle, Signature};
 
 pub struct ObjectInfo {
     pub type_id: i64,
@@ -74,9 +76,46 @@ impl ObjectInfo {
         return asset.read_id(buffer);
     }
 
-    pub fn get_type(&self) -> String {
+    pub fn get_type(&self, asset: &mut Asset, bundle: &mut AssetBundle) -> String {
+        if self.type_id > 0 {
+            return match resources::get_unity_class(&self.type_id) {
+                Ok(type_str) => type_str,
+                Err(_) => format!("<Unknown {}>", self.type_id),
+            };
+        } else if !asset.typenames.contains_key(&self.type_id) {
+            let rawdata = self.read(asset, bundle);
+        }
         String::new()
     }
+
+    fn read(&self, asset: &mut Asset, bundle: &mut AssetBundle) -> Result<ObjectValue> {
+        match bundle.signature {
+            Signature::UnityFS(ref mut buf) => { return self.read_value(asset, buf); },
+            Signature::UnityRaw(ref mut buf) => { return self.read_value(asset, buf); },
+            Signature::UnityRawCompressed(ref mut buf) => { return self.read_value(asset, &mut BufReader::new(Cursor::new(buf.as_slice()))); },
+            _ => { return Err( Error::new(ErrorKind::InvalidData, format!("Signature not supported for loading objects: {:?}", bundle.signature) )) },
+        }
+    }
+
+    fn read_value<R: Read + Seek + Teller>(&self, asset: &mut Asset, buffer: &mut R) -> Result<ObjectValue> {
+        let _ = buffer.seek(SeekFrom::Start(asset.bundle_offset as u64 + self.data_offset as u64));
+        
+        let mut object_buf = vec![0; self.size as usize];
+        try!(buffer.read_exact(object_buf.as_mut_slice()));
+
+        Ok(self.read_value_from_buffer(object_buf))
+    }
+
+    fn read_value_from_buffer(&self, buffer: Vec<u8>) -> ObjectValue {
+
+        // TODO: read_value_from_buffer
+        ObjectValue::None
+    }
+}
+
+pub enum ObjectValue {
+    Bool(bool),
+    None,
 }
 
 impl fmt::Display for ObjectInfo {

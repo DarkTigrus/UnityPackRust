@@ -14,6 +14,7 @@ use object::ObjectInfo;
 use std::ptr;
 use libc;
 use libc::uint32_t;
+use std::collections::hash_map;
 
 #[repr(C)]
 pub struct ObjectArray {
@@ -102,26 +103,31 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
 
 #[no_mangle]
 pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle, obj_type: *const c_char)  -> ObjectArray {
-    let mut _asset = unsafe { &mut *asset_ptr };
+    
     let mut _bundle = unsafe { &mut *bundle_ptr };
 
     let obj_type_str = unsafe { CStr::from_ptr(obj_type).to_str().unwrap() };
 
-    let objects = match _asset.get_objects(_bundle) {
-        Ok(obj) => obj,
-        Err(err) => {
-            println!("{}",err);
-            return ObjectArray {
-                array: ptr::null(),
-                length: 0,
-            };
-        },
-    };
-
+    let objects: hash_map::Values<i64,ObjectInfo>;
+    {
+        let mut _asset = unsafe { &mut *asset_ptr };
+        match _asset.get_objects(_bundle) {
+            Ok(obj) => {objects = obj.values();},
+            Err(err) => {
+                println!("{}",err);
+                return ObjectArray {
+                    array: ptr::null(),
+                    length: 0,
+                };
+            },
+        };
+    }
+    
     let mut v: Vec<*const libc::c_void> = Vec::new();
+    let mut _asset = unsafe { &mut *asset_ptr };
 
-    for obj in objects.values() {
-        if obj.get_type() == obj_type_str {
+    for obj in objects {
+        if (obj_type_str == "") || (obj.get_type(_asset, _bundle) == obj_type_str) {
             let obj_ptr: *const ObjectInfo = obj;
             unsafe {
                 v.push(transmute(obj_ptr));
@@ -139,4 +145,14 @@ pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_
     forget(boxed_slice);
         
     result
+}
+
+#[no_mangle]
+pub extern "C" fn unitypack_get_object_type(obj_ptr: *mut ObjectInfo, asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle) -> *mut c_char {
+    let mut _object = unsafe { &mut *obj_ptr };
+    let mut _asset = unsafe { &mut *asset_ptr };
+    let mut _bundle = unsafe { &mut *bundle_ptr };
+    
+    let c_str_type = CString::new(_object.get_type(_asset, _bundle).clone()).unwrap();
+    c_str_type.into_raw()
 }

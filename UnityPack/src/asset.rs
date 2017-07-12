@@ -8,7 +8,8 @@
 use assetbundle::AssetBundle;
 use assetbundle::Signature;
 use assetbundle::FSDescriptor;
-use typetree::{TypeMetadata, TypeNode, default_type_metadata};
+use typetree::{TypeMetadata, TypeNode};
+use resources::default_type_metadata;
 use binaryreader::*;
 use object::ObjectInfo;
 use std::collections::HashMap;
@@ -20,7 +21,7 @@ use std::sync::Arc;
 
 pub struct Asset {
     pub name: String,
-    bundle_offset: u64,
+    pub bundle_offset: u64,
     objects: HashMap<i64,ObjectInfo>,
     is_loaded: bool,
     pub endianness: Endianness,
@@ -28,6 +29,7 @@ pub struct Asset {
     types: HashMap<i64, Arc<TypeNode>>,
     asset_refs: Vec<AssetRef>,
     adds: Vec<(i64, i32)>,
+    pub typenames: HashMap<i64, String>,
     // properties
     metadata_size: u32,
     file_size: u32,
@@ -52,9 +54,10 @@ impl Asset {
             endianness: Endianness::Big,
             tree: None,
             types: HashMap::new(),
-            // when requesting frist element it should be asset itself
+            // when requesting first element it should be the asset itself
             asset_refs: Vec::new(),
             adds: Vec::new(),
+            typenames: HashMap::new(),
             metadata_size: 0,
             file_size: 0,
             format: 0,

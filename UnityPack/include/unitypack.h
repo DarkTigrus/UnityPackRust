@@ -13,7 +13,7 @@ struct unitypack_asset;
 struct unitypack_objectinfo;
 
 struct unitypack_object_array {
-    struct unitypack_objectinfo* array;
+    struct unitypack_objectinfo** array;
     size_t length;
 };
 
@@ -35,15 +35,21 @@ extern const char* unitypack_get_asset_name(struct unitypack_asset*);
 /* Frees a C string created by the unitypack library */
 extern void unitypack_free_rust_string(const char*);
 
+/* Returns the number of objects contained in the given asset */
 extern uint32_t unitypack_get_num_objects(const struct unitypack_asset*, const struct unitypack_assetbundle*);
 
-extern struct unitypack_object_array unitypack_get_objects_with_type(const struct unitypack_asset* asset, const struct unitypack_assetbundle* bundle, const char* object_type);
+/* Returns an array of unitypack objects with the given type. Returns all objects if object_type is an empty string */
+extern struct unitypack_object_array unitypack_get_objects_with_type(const struct unitypack_asset* asset,
+    const struct unitypack_assetbundle* bundle, const char* object_type);
 
+/* Frees the given object array */
 void unitypack_free_object_array(struct unitypack_object_array* object_array) {
     if (object_array->length != 0) {
         free(object_array->array);
         object_array->length = 0;
     }
 };
+
+extern const char* unitypack_get_object_type(struct unitypack_objectinfo* object, const struct unitypack_asset* asset, const struct unitypack_assetbundle*);
 
 #endif /* UNITYPACK_H */

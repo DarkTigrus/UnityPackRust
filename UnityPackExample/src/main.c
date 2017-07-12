@@ -11,7 +11,7 @@
 
 int main() {
     const char* filepath = "/Applications/Hearthstone/Data/OSX/cards0.unity3d";
-    uint32_t i;
+    uint32_t i, j;
 
     const struct unitypack_assetbundle* assetbundle = unitypack_load_assetbundle_from_file(filepath);
     printf("Successfully loaded assetbundle from %s\n",filepath);
@@ -30,7 +30,12 @@ int main() {
 
         struct unitypack_object_array object_array = unitypack_get_objects_with_type(asset, assetbundle, "GameObject");
 
-        printf("%p - %zu\n",object_array.array, object_array.length);
+        for (j=0; j < object_array.length; j++) {
+            const char* object_type = unitypack_get_object_type(object_array.array[j], asset, assetbundle);
+            printf("%s\n", object_type);
+            unitypack_free_rust_string(object_type);
+        }
+        
 
         unitypack_free_object_array(&object_array);
     }

@@ -11,47 +11,7 @@ use binaryreader::{ReadExtras, Endianness};
 use enums::{RuntimePlatform, get_runtime_platform};
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::fs::File;
 use resources;
-use std::error;
-
-lazy_static! {
-    static ref DEFAULT_TYPE_METADATA: Result<TypeMetadata> = {
-        let file = try!(File::open(resources::RESOURCE_PATH_STRUCT));
-        let mut bin_reader = BufReader::new(file);
-        TypeMetadata::new(&mut bin_reader, 15, &Endianness::Big)
-    };
-}
-
-lazy_static! {
-    static ref DEFAULT_TYPE_STRINGS: Result<Vec<u8>> = {
-        let file = try!(File::open(resources::RESOURCE_PATH_STRINGS));
-        let mut bin_reader = BufReader::new(file);
-        let mut result: Vec<u8> = Vec::new();
-        let _ = bin_reader.read_to_end(&mut result);
-        Ok(result)
-    };
-}
-
-pub fn default_type_metadata() -> Result<&'static TypeMetadata> {
-    match DEFAULT_TYPE_METADATA.as_ref() {
-        Ok(ref d) => Ok(d),
-        Err(err) => {
-            println!("Failed to read {}",resources::RESOURCE_PATH_STRUCT);
-            Err(Error::new(err.kind(), error::Error::description(err)))
-        },
-    }
-}
-
-pub fn default_type_strings() -> Result<&'static Vec<u8>> {
-    match DEFAULT_TYPE_STRINGS.as_ref() {
-        Ok(ref d) => Ok(d),
-        Err(err) => {
-            println!("Failed to read {}",resources::RESOURCE_PATH_STRINGS);
-            Err(Error::new(err.kind(), error::Error::description(err)))
-        },
-    }
-}
 
 pub struct TypeMetadata {
     generator_version: String,
@@ -255,7 +215,7 @@ impl TypeNode {
 
         if *offset < 0 {
             off &= 0x7fffffff;
-            string_data = try!(default_type_strings());
+            string_data = try!(resources::default_type_strings());
         } else if *offset < *buffer_bytes as i32 {
             string_data = buffer;
         } else {
