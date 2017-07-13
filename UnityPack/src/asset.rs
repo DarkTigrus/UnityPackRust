@@ -26,7 +26,7 @@ pub struct Asset {
     is_loaded: bool,
     pub endianness: Endianness,
     pub tree: Option<TypeMetadata>,
-    types: HashMap<i64, Arc<TypeNode>>,
+    pub types: HashMap<i64, Arc<TypeNode>>,
     asset_refs: Vec<AssetRef>,
     adds: Vec<(i64, i32)>,
     pub typenames: HashMap<i64, String>,

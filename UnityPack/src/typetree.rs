@@ -90,9 +90,9 @@ impl TypeMetadata {
 }
 
 pub struct TypeNode {
-    type_name: String,
-    field_name: String,
-    size: i32,
+    pub type_name: String,
+    pub field_name: String,
+    pub size: i32,
     index: u32,
     is_array: bool,
     flags: i32,

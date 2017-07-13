@@ -4,12 +4,12 @@
  *
  * All rights reserved 2017
  */
-use std::io::{Read, Seek, SeekFrom, BufReader};
+use std::io::{Read, Seek, SeekFrom, BufReader, Error, ErrorKind};
 use std::io;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use std::fmt;
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub enum Endianness {
     Big = 1,
     Little = 0,
@@ -37,8 +37,23 @@ pub trait ReadExtras: io::Read {
         Ok(result)
     }
 
+    fn read_string_sized(&mut self, size: usize) -> io::Result<String> {
+        
+        let mut buf = vec![0; size];
+        try!(self.read_exact(buf.as_mut_slice()));
+
+        match String::from_utf8(buf) {
+            Ok(s) => Ok(s),
+            Err(err) => {Err(Error::new(ErrorKind::InvalidData, format!("{}", err) ))},
+        }
+    }
+
     fn read_u8(&mut self) -> io::Result<u8> {
         ReadBytesExt::read_u8(self)
+    }
+
+    fn read_i8(&mut self) -> io::Result<i8> {
+        ReadBytesExt::read_i8(self)
     }
 
     fn read_bool(&mut self) -> io::Result<bool> {
@@ -85,6 +100,13 @@ pub trait ReadExtras: io::Read {
         match *endiannes {
             Endianness::Little => ReadBytesExt::read_i64::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_i64::<BigEndian>(self),
+        }
+    }
+
+    fn read_f32(&mut self, endiannes: &Endianness) -> io::Result<f32> {
+        match *endiannes {
+            Endianness::Little => ReadBytesExt::read_f32::<LittleEndian>(self),
+            Endianness::Big => ReadBytesExt::read_f32::<BigEndian>(self),
         }
     }
     
@@ -138,7 +160,7 @@ impl<R> BinaryReader<R>
 
     pub fn read_i8(&mut self) -> io::Result<i8> {
         self.cursor += 1;
-        self.buffer.read_i8()
+        ReadExtras::read_i8(&mut self.buffer)
     }
 
     pub fn read_u16(&mut self) -> io::Result<u16> {
@@ -178,6 +200,11 @@ impl<R> BinaryReader<R>
         self.cursor += bytes_to_read as u64;
 
         Ok(buf)
+    }
+
+    pub fn read_f32(&mut self) -> io::Result<f32> {
+        self.cursor += 4;
+        ReadExtras::read_f32(&mut self.buffer, &self.endianness)
     }
 }
 
