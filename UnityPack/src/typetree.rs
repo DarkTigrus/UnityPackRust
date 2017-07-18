@@ -94,9 +94,23 @@ pub struct TypeNode {
     pub field_name: String,
     pub size: i32,
     index: u32,
-    is_array: bool,
+    pub is_array: bool,
     flags: i32,
-    children: Vec<TypeNode>,
+    pub children: Vec<TypeNode>,
+}
+
+lazy_static! {
+    pub static ref DEFAULT_TYPENODE: TypeNode = {
+        TypeNode {
+            type_name: String::new(),
+            field_name: String::new(),
+            size: 0,
+            index: 0,
+            is_array: false,
+            flags: 0,
+            children: Vec::new(),
+        }
+    };
 }
 
 impl TypeNode {

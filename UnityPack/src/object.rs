@@ -9,7 +9,7 @@ use std::io::{Read, Seek, SeekFrom, Error, Result, ErrorKind, BufReader, Cursor}
 use binaryreader::{Teller, ReadExtras, BinaryReader};
 use std::fmt;
 use std::sync::Arc;
-use typetree::TypeNode;
+use typetree::{TypeNode,DEFAULT_TYPENODE};
 use resources::{default_type_metadata, get_unity_class};
 use assetbundle::{AssetBundle, Signature};
 
@@ -145,7 +145,6 @@ impl ObjectInfo {
         let pos_before = buffer.tell();
         let ref t = typetree.type_name;
 
-        // let ref first child
         let mut result = ObjectValue::None;
         if t == "bool" {
             result = ObjectValue::Bool(try!(buffer.read_bool()));
@@ -170,10 +169,37 @@ impl ObjectInfo {
         } else if t == "string" {
             let size = try!(buffer.read_u32());
             result = ObjectValue::String(try!(buffer.read_string_sized(size as usize)));
+        } else {
+            
+            let ref first_child: TypeNode;
+            if typetree.is_array {
+                first_child = &typetree;
+            } else {
+                first_child = match typetree.children.len() {
+                    x if x > 0 => &typetree.children[0],
+                    _ => &DEFAULT_TYPENODE,
+                };
+            }
+
+            if t.contains("PPtr<") {
+                let mut object_pointer = ObjectPointer::new(&typetree.type_name);
+                result = match object_pointer.load(buffer) {
+                    Ok(_) => ObjectValue::ObjectPointer(object_pointer),
+                    _ => ObjectValue::None,
+                };
+            }
+
+
         }
 
         // TODO: read_value_from_buffer
         Ok(result)
+    }
+}
+
+impl fmt::Display for ObjectInfo {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "<{} {}>", self.typename, self.class_id)
     }
 }
 
@@ -189,12 +215,28 @@ pub enum ObjectValue {
     I64(i64),
     Float(f32),
     String(String),
+    ObjectPointer(ObjectPointer),
     // TODO
     None,
 }
 
-impl fmt::Display for ObjectInfo {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<{} {}>", self.typename, self.class_id)
+struct ObjectPointer {
+    type_name: String,
+    file_id: i32,
+    path_id: i64,
+}
+
+impl ObjectPointer {
+    fn new(name: &String) -> ObjectPointer {
+        ObjectPointer {
+            type_name: name.clone(),
+            file_id: 0,
+            path_id: 0,
+        }
+    }
+
+    fn load<R: Read + Seek>(&mut self, buffer: &mut BinaryReader<R>) -> Result<()> {
+        // TODO ObjectPointer load
+        Ok(())
     }
 }
