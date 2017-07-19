@@ -12,6 +12,7 @@ use std::sync::Arc;
 use typetree::{TypeNode,DEFAULT_TYPENODE};
 use resources::{default_type_metadata, get_unity_class};
 use assetbundle::{AssetBundle, Signature};
+use extras::containers::OrderedMap;
 
 pub struct ObjectInfo {
     pub type_id: i64,
@@ -212,6 +213,15 @@ impl ObjectInfo {
                 let first = try!(self.read_value_from_buffer(asset, &typetree.children[0], buffer));
                 let second = try!(self.read_value_from_buffer(asset, &typetree.children[1], buffer));
                 result = ObjectValue::Pair((Box::new(first), Box::new(second)));
+            } else {
+                let mut ordered_map: OrderedMap<String, ObjectValue> = OrderedMap::new();
+
+                for type_child in &typetree.children {
+                    let child = try!(self.read_value_from_buffer(asset, type_child, buffer));
+                    ordered_map.insert(type_child.field_name.clone(), child);
+                }
+
+                // let result = load_object(typetree, ordered_map);
             }
 
 

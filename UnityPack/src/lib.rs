@@ -24,6 +24,7 @@ mod typetree;
 mod enums;
 mod resources;
 pub mod unitypack_c;
+mod extras;
 
 #[cfg(test)]
 mod tests {
