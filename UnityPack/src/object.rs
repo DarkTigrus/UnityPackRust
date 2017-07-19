@@ -136,10 +136,10 @@ impl ObjectInfo {
 
         let reader = BufReader::new(Cursor::new(object_buf));
         let mut binreader = BinaryReader::new(reader, asset.endianness.clone());
-        self.read_value_from_buffer(typetree, &mut binreader)
+        self.read_value_from_buffer(asset, &typetree, &mut binreader)
     }
 
-    fn read_value_from_buffer<R: Read + Seek>(&self, typetree: Arc<TypeNode>, buffer: &mut BinaryReader<R>) -> Result<ObjectValue> {
+    fn read_value_from_buffer<R: Read + Seek>(&self, asset: &mut Asset, typetree: &TypeNode, buffer: &mut BinaryReader<R>) -> Result<ObjectValue> {
         let mut align = false;
         let expected_size = typetree.size;
         let pos_before = buffer.tell();
@@ -173,7 +173,7 @@ impl ObjectInfo {
             
             let ref first_child: TypeNode;
             if typetree.is_array {
-                first_child = &typetree;
+                first_child = typetree;
             } else {
                 first_child = match typetree.children.len() {
                     x if x > 0 => &typetree.children[0],
@@ -183,10 +183,35 @@ impl ObjectInfo {
 
             if t.contains("PPtr<") {
                 let mut object_pointer = ObjectPointer::new(&typetree.type_name);
-                result = match object_pointer.load(buffer) {
+                result = match object_pointer.load(asset, buffer) {
                     Ok(_) => ObjectValue::ObjectPointer(object_pointer),
                     _ => ObjectValue::None,
                 };
+            } else if first_child.is_array {
+                align = first_child.post_align();
+                let size = try!(buffer.read_i32());
+                let ref array_type = first_child.children[1].type_name;
+                if array_type == "char" || array_type == "UInt8" {
+                    let mut data: Vec<u8> = vec![0; size as usize];
+                    try!(buffer.read_exact(data.as_mut_slice()));
+                    result = ObjectValue::U8Array(data);
+                } else {
+                    // we dont know the type
+                    let mut array: Vec<ObjectValue> = Vec::with_capacity(size as usize);
+                    for _ in 0..size {
+                        let object_value = try!(self.read_value_from_buffer(asset, typetree, buffer));
+                        array.push(object_value);
+                    }
+                    result = ObjectValue::Array(array);
+                }
+            } else if t == "pair" {
+                if typetree.children.len() != 2 {
+                    return Err( Error::new(ErrorKind::InvalidData, format!("Type pair needs exactly 2 elements not {}", typetree.children.len()) ));
+                }
+
+                let first = try!(self.read_value_from_buffer(asset, &typetree.children[0], buffer));
+                let second = try!(self.read_value_from_buffer(asset, &typetree.children[1], buffer));
+                result = ObjectValue::Pair((Box::new(first), Box::new(second)));
             }
 
 
@@ -216,11 +241,14 @@ pub enum ObjectValue {
     Float(f32),
     String(String),
     ObjectPointer(ObjectPointer),
+    U8Array(Vec<u8>),
+    Array(Vec<ObjectValue>),
+    Pair((Box<ObjectValue>,Box<ObjectValue>)),
     // TODO
     None,
 }
 
-struct ObjectPointer {
+pub struct ObjectPointer {
     type_name: String,
     file_id: i32,
     path_id: i64,
@@ -235,8 +263,10 @@ impl ObjectPointer {
         }
     }
 
-    fn load<R: Read + Seek>(&mut self, buffer: &mut BinaryReader<R>) -> Result<()> {
-        // TODO ObjectPointer load
+    fn load<R: Read + Seek>(&mut self, asset: &mut Asset, buffer: &mut BinaryReader<R>) -> Result<()> {
+        self.file_id = try!(buffer.read_i32());
+        self.path_id = try!(asset.read_id(buffer));
+
         Ok(())
     }
 }

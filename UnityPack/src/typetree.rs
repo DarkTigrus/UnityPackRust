@@ -242,4 +242,8 @@ impl TypeNode {
         let result = String::from_utf8(z.to_vec()).unwrap();
         return Ok(result);
     }
+
+    pub fn post_align(&self) -> bool {
+        (self.flags & 0x4000) != 0
+    }
 }
