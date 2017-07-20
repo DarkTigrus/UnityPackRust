@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use std::hash::Hash;
 
 /// A HashMap which remembers its insertion order. 
-pub struct OrderedMap<'a, K: 'a, V> {
+pub struct OrderedMap<K, V> {
     items: HashMap<K, V>,
-    indices: HashMap<usize, &'a K>,
+    indices: HashMap<usize, K>,
 }
 
-impl<'a, K: 'a, V> OrderedMap<'a, K, V> where K: Eq + Hash {
+impl<K, V> OrderedMap<K, V> where K: Eq + Hash + Clone {
 
-    pub fn new() -> OrderedMap<'a, K, V> {
+    pub fn new() -> OrderedMap<K, V> {
         OrderedMap {
             items: HashMap::new(),
             indices: HashMap::new(),
@@ -33,16 +33,16 @@ impl<'a, K: 'a, V> OrderedMap<'a, K, V> where K: Eq + Hash {
     ///
     /// [`None`]: ../../std/option/enum.Option.html#variant.None
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
-        let res = self.items.insert(k, v);
 
-        match res {
-            None => {
-                self.indices.insert(self.items.len()-1, self.items.entry(k).key());
-            },
-            _ => {},
-        };
+        if self.items.contains_key(&k) {
+            return self.items.insert(k, v);
+        }
 
-        res
+        let k_clone = k.clone();
+        self.items.insert(k, v);
+        self.indices.insert(self.items.len()-1, k_clone);
+
+        None
     }
 
     pub fn len(&self) -> usize {
