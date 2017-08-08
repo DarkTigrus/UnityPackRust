@@ -13,16 +13,17 @@ use resources::default_type_metadata;
 use binaryreader::*;
 use object::ObjectInfo;
 use std::collections::HashMap;
+use std::io::{Cursor, BufReader, Read, Seek, SeekFrom};
 use std::io;
-use std::io::{Cursor, Result, BufReader, Read, Seek, SeekFrom, Error, ErrorKind};
 use lzma;
 use uuid::Uuid;
 use std::sync::Arc;
+use error::{Error, Result};
 
 pub struct Asset {
     pub name: String,
     pub bundle_offset: u64,
-    objects: HashMap<i64,ObjectInfo>,
+    objects: HashMap<i64, ObjectInfo>,
     is_loaded: bool,
     pub endianness: Endianness,
     pub tree: Option<TypeMetadata>,
@@ -74,8 +75,7 @@ impl Asset {
                 &mut Signature::UnityWeb(ref mut buf) |
                 &mut Signature::UnityRaw(ref mut buf) => buf,
                 _ => {
-                    return Err(Error::new(ErrorKind::InvalidData,
-                                          "Cannot load asset from unknown signature"));
+                    return Err(Error::InvalidSignatureError);
                 }
             };
 
@@ -83,14 +83,14 @@ impl Asset {
 
             let header_size: u32;
             if !is_compressed {
-                asset.name = try!(buffer.read_string());
-                header_size = try!(buffer.read_u32(&Endianness::Big));
-                try!(buffer.read_u32(&Endianness::Big)); // size
+                asset.name = buffer.read_string()?;
+                header_size = buffer.read_u32(&Endianness::Big)?;
+                buffer.read_u32(&Endianness::Big)?; // size
             } else {
                 header_size = match descriptor {
                     &FSDescriptor::Raw(ref desc) => desc.asset_header_size,
                     _ => {
-                        return Err(Error::new(ErrorKind::InvalidData, "Invalid raw descriptor"));
+                        return Err(Error::AssetError("Invalid raw descriptor".to_string()));
                     }
                 };
             }
@@ -102,7 +102,7 @@ impl Asset {
                 decompressed = match lzma::decompress(&mut compressed_data) {
                     Ok(data) => data,
                     Err(err) => {
-                        return Err(Error::new(ErrorKind::InvalidData, format!("{}", err)));
+                        return Err(Error::LZMADecompressionError(Box::new(err)));
                     }
                 };
                 asset.bundle_offset = 0;
@@ -127,133 +127,156 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn get_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<&HashMap<i64, ObjectInfo>> {
+    pub fn get_objects(
+        &mut self,
+        bundle: &mut AssetBundle,
+    ) -> io::Result<&HashMap<i64, ObjectInfo>> {
         if !self.is_loaded {
-            isOptionError!(self.load(bundle));
+            self.load(bundle)?;
         }
         Ok(&self.objects)
     }
 
-    fn load(&mut self, bundle: &mut AssetBundle) -> Option<Error> {
+    fn load(&mut self, bundle: &mut AssetBundle) -> Result<()> {
         if self.is_resource() {
             self.is_loaded = true;
-            return None;
+            return Ok(());
         }
 
         match bundle.signature {
-            Signature::UnityFS(ref mut buf) => { return self.load_from_buffer(buf); },
-            Signature::UnityRaw(ref mut buf) => { return self.load_from_buffer(buf); },
-            Signature::UnityRawCompressed(ref mut buf) => { return self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice()))); },
-            _ => { return Some( Error::new(ErrorKind::InvalidData, format!("Signature not supported for loading objects: {:?}", bundle.signature)  )) },
+            Signature::UnityFS(ref mut buf) => {
+                return self.load_from_buffer(buf);
+            }
+            Signature::UnityRaw(ref mut buf) => {
+                return self.load_from_buffer(buf);
+            }
+            Signature::UnityRawCompressed(ref mut buf) => {
+                return self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice())));
+            }
+            _ => {
+                return Err(Error::AssetError(format!(
+                    "Signature not supported for loading objects: {:?}",
+                    bundle.signature
+                )))
+            }
         }
     }
 
-    fn load_from_buffer<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Option<Error> {
+    fn load_from_buffer<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> Result<()> {
         let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
 
-        self.metadata_size = tryOption!(buffer.read_u32(&self.endianness));
-        self.file_size = tryOption!(buffer.read_u32(&self.endianness));
-        self.format = tryOption!(buffer.read_u32(&self.endianness));
-		self.data_offset = tryOption!(buffer.read_u32(&self.endianness));
-        
+        self.metadata_size = buffer.read_u32(&self.endianness)?;
+        self.file_size = buffer.read_u32(&self.endianness)?;
+        self.format = buffer.read_u32(&self.endianness)?;
+        self.data_offset = buffer.read_u32(&self.endianness)?;
+
         if self.format >= 9 {
-            self.endianness = match tryOption!(buffer.read_u32(&self.endianness)) {
+            self.endianness = match buffer.read_u32(&self.endianness)? {
                 0 => Endianness::Little,
                 _ => Endianness::Big,
             };
         }
 
-        let tree = tryOption!(TypeMetadata::new(buffer, self.format, &self.endianness));
+        let tree = TypeMetadata::new(buffer, self.format, &self.endianness)?;
         self.tree = Some(tree);
-        
+
         if (self.format >= 7) && (self.format <= 13) {
-            self.long_object_ids = tryOption!(buffer.read_u32(&self.endianness)) != 0
+            self.long_object_ids = buffer.read_u32(&self.endianness)? != 0
         }
 
-        let num_objects = tryOption!(buffer.read_u32(&self.endianness));
+        let num_objects = buffer.read_u32(&self.endianness)?;
 
         for _ in 0..num_objects {
             if self.format >= 14 {
                 buffer.align();
             }
-            let obj = tryOption!(ObjectInfo::new(self, buffer));
-            isOption!(self.register_object(obj));
+            let obj = ObjectInfo::new(self, buffer)?;
+            self.register_object(obj)?;
         }
 
         if self.format >= 11 {
-            let num_adds = tryOption!(buffer.read_u32(&self.endianness));
+            let num_adds = buffer.read_u32(&self.endianness)?;
             for _ in 0..num_adds {
                 if self.format >= 14 {
                     buffer.align();
                 }
-                let id = tryOption!(self.read_id(buffer));
-                let add = tryOption!(buffer.read_i32(&self.endianness));
+                let id = self.read_id(buffer)?;
+                let add = buffer.read_i32(&self.endianness)?;
                 self.adds.push((id, add));
             }
         }
 
         if self.format >= 6 {
-            let num_refs = tryOption!(buffer.read_u32(&self.endianness));
+            let num_refs = buffer.read_u32(&self.endianness)?;
             for _ in 0..num_refs {
-                let asset_ref = tryOption!(AssetRef::new(buffer, &self.endianness));
+                let asset_ref = AssetRef::new(buffer, &self.endianness)?;
                 self.asset_refs.push(asset_ref);
             }
         }
-        
-        let unk_string = tryOption!(buffer.read_string());
-        
+
+        let unk_string = buffer.read_string()?;
+
         if unk_string != "" {
-            return Some(Error::new(ErrorKind::InvalidData, format!("Error while loading Asset, ending string is not empty but {:?}", unk_string)));
+            return Err(Error::AssetError(format!(
+                "Error while loading Asset, ending string is not empty but {:?}",
+                unk_string
+            )));
         }
 
         self.is_loaded = true;
-        None
+        Ok(())
     }
 
-    fn register_object(&mut self, obj: ObjectInfo) -> Option<Error> {
+    fn register_object(&mut self, obj: ObjectInfo) -> Result<()> {
         let ref tree = match &self.tree {
             &Some(ref t) => t,
-            &None => return None,
+            &None => return Ok(()),
         };
-        
+
         match tree.type_trees.get(&obj.type_id) {
             Some(o_type) => {
                 self.types.insert(obj.type_id, o_type.clone());
-                },
+            }
             None => {
                 match self.types.get(&obj.type_id) {
-                    Some(_) => {},
+                    Some(_) => {}
                     None => {
-                        let ref trees = tryOption!(default_type_metadata()).type_trees;
+                        let ref trees = default_type_metadata()?.type_trees;
                         match trees.get(&(obj.class_id as i64)) {
                             Some(o) => {
                                 self.types.insert(obj.type_id, o.clone());
-                                },
+                            }
                             None => {
                                 // log warning
                                 println!("Warning: {:?} is absent from structs.dat", obj.class_id);
                                 // self.types.insert(obj.type_id, None)
-                            },
+                            }
                         };
-                    },
+                    }
                 };
-            },
+            }
         };
 
         match self.objects.get(&obj.path_id) {
-            Some(_) => return Some(Error::new(ErrorKind::InvalidData, format!("Duplicate asset object: {} (path_id={})", obj, obj.path_id))),
-            None => {},
+            Some(_) => {
+                return Err(Error::AssetError(format!(
+                    "Duplicate asset object: {} (path_id={})",
+                    obj,
+                    obj.path_id
+                )))
+            }
+            None => {}
         }
 
         self.objects.insert(obj.path_id, obj);
-        None
+        Ok(())
     }
 
-    pub fn read_id<R: Read+Seek+ Teller>(&mut self, buffer: &mut R) -> Result<i64> {
+    pub fn read_id<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> io::Result<i64> {
         if self.format >= 14 {
             return buffer.read_i64(&self.endianness);
         }
-        let result = try!(buffer.read_i32(&self.endianness)) as i64;
+        let result = buffer.read_i32(&self.endianness)? as i64;
         return Ok(result);
     }
 }
@@ -267,16 +290,19 @@ struct AssetRef {
 }
 
 impl AssetRef {
-    pub fn new<R: Read+Seek+ Teller>(buffer: &mut R, endianness: &Endianness) -> Result<AssetRef> {
-        let asset_path = try!(buffer.read_string());
+    pub fn new<R: Read + Seek + Teller>(
+        buffer: &mut R,
+        endianness: &Endianness,
+    ) -> Result<AssetRef> {
+        let asset_path = buffer.read_string()?;
         let mut uuid_buffer = [0; 16];
-        try!(buffer.read_exact(&mut uuid_buffer));
+        buffer.read_exact(&mut uuid_buffer)?;
         let guid = match Uuid::from_bytes(&uuid_buffer) {
             Ok(uuid) => uuid,
-            _ => return Err(Error::new(ErrorKind::InvalidData, "Failed to parse UUID data")),
+            Err(err) => return Err(Error::UuidError(format!("{}", err))),
         };
-        let asset_type = try!(buffer.read_i32(endianness));
-        let file_path = try!(buffer.read_string());
+        let asset_type = buffer.read_i32(endianness)?;
+        let file_path = buffer.read_string()?;
 
         Ok(AssetRef {
             asset_path: asset_path,

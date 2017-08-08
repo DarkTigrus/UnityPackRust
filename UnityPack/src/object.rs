@@ -5,11 +5,13 @@
  * All rights reserved 2017
  */
 use asset::Asset;
-use std::io::{Read, Seek, SeekFrom, Error, Result, ErrorKind, BufReader, Cursor};
+use std::io::{Read, Seek, SeekFrom, BufReader, Cursor};
+use std::io;
+use error::{Error, Result};
 use binaryreader::{Teller, ReadExtras, BinaryReader};
 use std::fmt;
 use std::sync::Arc;
-use typetree::{TypeNode,DEFAULT_TYPENODE};
+use typetree::{TypeNode, DEFAULT_TYPENODE};
 use resources::{default_type_metadata, get_unity_class};
 use assetbundle::{AssetBundle, Signature};
 use extras::containers::OrderedMap;
@@ -25,10 +27,9 @@ pub struct ObjectInfo {
 }
 
 impl ObjectInfo {
+    pub fn new<R: Read + Seek + Teller>(asset: &mut Asset, buffer: &mut R) -> Result<ObjectInfo> {
 
-    pub fn new<R: Read+Seek+ Teller>(asset: &mut Asset, buffer: &mut R) -> Result<ObjectInfo> {
-        
-        let mut res = ObjectInfo{
+        let mut res = ObjectInfo {
             type_id: 0,
             path_id: 0,
             class_id: 0,
@@ -48,12 +49,12 @@ impl ObjectInfo {
         } else {
             let type_id = try!(buffer.read_i32(&asset.endianness));
             let class_id = match &asset.tree {
-                &Some(ref tree) => {
-                    tree.class_ids[type_id as usize]
-                },
+                &Some(ref tree) => tree.class_ids[type_id as usize],
                 &None => {
-                    return Err(Error::new(ErrorKind::InvalidData, "Asset's typemetadata is undefined"));
-                },
+                    return Err(Error::AssetError(
+                        "Asset's typemetadata is undefined".to_string(),
+                    ));
+                }
             };
             res.type_id = class_id as i64;
             res.class_id = class_id as i16;
@@ -72,7 +73,7 @@ impl ObjectInfo {
         return Ok(res);
     }
 
-    fn read_id<R: Read+Seek+ Teller>(buffer: &mut R, asset: &mut Asset) -> Result<i64> {
+    fn read_id<R: Read + Seek + Teller>(buffer: &mut R, asset: &mut Asset) -> io::Result<i64> {
         if asset.long_object_ids {
             return buffer.read_i64(&asset.endianness);
         }
@@ -107,29 +108,41 @@ impl ObjectInfo {
                             if data.type_trees.contains_key(&(self.class_id as i64)) {
                                 return data.type_trees[&(self.class_id as i64)].clone();
                             }
-                        },
-                        Err(_) => {},
+                        }
+                        Err(_) => {}
                     };
-                },
-                None => {},
+                }
+                None => {}
             };
-            
+
         }
         asset.types[&self.type_id].clone()
     }
 
     fn read(&self, asset: &mut Asset, bundle: &mut AssetBundle) -> Result<ObjectValue> {
         match bundle.signature {
-            Signature::UnityFS(ref mut buf) => { return self.read_value(asset, buf); },
-            Signature::UnityRaw(ref mut buf) => { return self.read_value(asset, buf); },
-            Signature::UnityRawCompressed(ref mut buf) => { return self.read_value(asset, &mut BufReader::new(Cursor::new(buf.as_slice()))); },
-            _ => { return Err( Error::new(ErrorKind::InvalidData, format!("Signature not supported for loading objects: {:?}", bundle.signature) )) },
+            Signature::UnityFS(ref mut buf) => {
+                return self.read_value(asset, buf);
+            }
+            Signature::UnityRaw(ref mut buf) => {
+                return self.read_value(asset, buf);
+            }
+            Signature::UnityRawCompressed(ref mut buf) => {
+                return self.read_value(asset, &mut BufReader::new(Cursor::new(buf.as_slice())));
+            }
+            _ => return Err(Error::InvalidSignatureError),
         }
     }
 
-    fn read_value<R: Read + Seek + Teller>(&self, asset: &mut Asset, buffer: &mut R) -> Result<ObjectValue> {
-        let _ = buffer.seek(SeekFrom::Start(asset.bundle_offset as u64 + self.data_offset as u64));
-        
+    fn read_value<R: Read + Seek + Teller>(
+        &self,
+        asset: &mut Asset,
+        buffer: &mut R,
+    ) -> Result<ObjectValue> {
+        let _ = buffer.seek(SeekFrom::Start(
+            asset.bundle_offset as u64 + self.data_offset as u64,
+        ));
+
         let mut object_buf = vec![0; self.size as usize];
         try!(buffer.read_exact(object_buf.as_mut_slice()));
 
@@ -140,7 +153,12 @@ impl ObjectInfo {
         self.read_value_from_buffer(asset, &typetree, &mut binreader)
     }
 
-    fn read_value_from_buffer<R: Read + Seek>(&self, asset: &mut Asset, typetree: &TypeNode, buffer: &mut BinaryReader<R>) -> Result<ObjectValue> {
+    fn read_value_from_buffer<R: Read + Seek>(
+        &self,
+        asset: &mut Asset,
+        typetree: &TypeNode,
+        buffer: &mut BinaryReader<R>,
+    ) -> Result<ObjectValue> {
         let mut align = false;
         let expected_size = typetree.size;
         let pos_before = buffer.tell();
@@ -171,7 +189,7 @@ impl ObjectInfo {
             let size = try!(buffer.read_u32());
             result = ObjectValue::String(try!(buffer.read_string_sized(size as usize)));
         } else {
-            
+
             let ref first_child: TypeNode;
             if typetree.is_array {
                 first_child = typetree;
@@ -200,18 +218,30 @@ impl ObjectInfo {
                     // we dont know the type
                     let mut array: Vec<ObjectValue> = Vec::with_capacity(size as usize);
                     for _ in 0..size {
-                        let object_value = try!(self.read_value_from_buffer(asset, typetree, buffer));
+                        let object_value =
+                            try!(self.read_value_from_buffer(asset, typetree, buffer));
                         array.push(object_value);
                     }
                     result = ObjectValue::Array(array);
                 }
             } else if t == "pair" {
                 if typetree.children.len() != 2 {
-                    return Err( Error::new(ErrorKind::InvalidData, format!("Type pair needs exactly 2 elements not {}", typetree.children.len()) ));
+                    return Err(Error::ObjectError(format!(
+                        "Type pair needs exactly 2 elements not {}",
+                        typetree.children.len()
+                    )));
                 }
 
-                let first = try!(self.read_value_from_buffer(asset, &typetree.children[0], buffer));
-                let second = try!(self.read_value_from_buffer(asset, &typetree.children[1], buffer));
+                let first = try!(self.read_value_from_buffer(
+                    asset,
+                    &typetree.children[0],
+                    buffer,
+                ));
+                let second = try!(self.read_value_from_buffer(
+                    asset,
+                    &typetree.children[1],
+                    buffer,
+                ));
                 result = ObjectValue::Pair((Box::new(first), Box::new(second)));
             } else {
                 let mut ordered_map: OrderedMap<String, ObjectValue> = OrderedMap::new();
@@ -253,7 +283,7 @@ pub enum ObjectValue {
     ObjectPointer(ObjectPointer),
     U8Array(Vec<u8>),
     Array(Vec<ObjectValue>),
-    Pair((Box<ObjectValue>,Box<ObjectValue>)),
+    Pair((Box<ObjectValue>, Box<ObjectValue>)),
     // TODO
     None,
 }
@@ -273,7 +303,11 @@ impl ObjectPointer {
         }
     }
 
-    fn load<R: Read + Seek>(&mut self, asset: &mut Asset, buffer: &mut BinaryReader<R>) -> Result<()> {
+    fn load<R: Read + Seek>(
+        &mut self,
+        asset: &mut Asset,
+        buffer: &mut BinaryReader<R>,
+    ) -> Result<()> {
         self.file_id = try!(buffer.read_i32());
         self.path_id = try!(asset.read_id(buffer));
 

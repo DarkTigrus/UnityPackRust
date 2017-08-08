@@ -8,26 +8,31 @@ use std::cmp;
 use std::fmt;
 use std::io;
 use std::fs::File;
-use std::io::{Error, ErrorKind, BufReader, Read, Seek, SeekFrom, Cursor};
+use std::io::{ErrorKind, BufReader, Read, Seek, SeekFrom, Cursor};
 use asset::Asset;
 use binaryreader::*;
 use lz4_compress;
+use lzma;
+use error::{Error, Result};
 
-fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> io::Result<Vec<u8>> {
+fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>> {
     match *compression_type {
         CompressionType::LZ4 |
         CompressionType::LZ4HC => {
             match lz4_compress::decompress(data.as_slice()) {
                 Err(err) => {
-                    return Err(Error::new(ErrorKind::InvalidData,
-                                          format!("LZ4 decompression failed: {:?}", err)));
+                    return Err(Error::LZ4DecompressionError(Box::new(err)));
                 }
                 Ok(buf) => Ok(buf),
             }
         }
         CompressionType::LZMA | CompressionType::LZHAM => {
-            Err(Error::new(ErrorKind::InvalidData,
-                           format!("{:?} is not yet implemented", *compression_type)))
+            match lzma::decompress(data.as_slice()) {
+                Ok(data) => Ok(data),
+                Err(err) => {
+                    return Err(Error::LZMADecompressionError(Box::new(err)));
+                }
+            }
         }
         _ => Ok(data.clone()),
     }
@@ -40,14 +45,14 @@ pub enum Signature {
     UnityRaw(BufReader<File>),
     UnityRawCompressed(Vec<u8>),
     UnityArchive,
-	Unknown,
+    Unknown,
 }
 
 impl Seek for Signature {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self {
-            &mut Signature::UnityFS(ref mut buf) => {buf.seek(pos)},
-            _ => {Ok(0)},
+            &mut Signature::UnityFS(ref mut buf) => buf.seek(pos),
+            _ => Ok(0),
         }
     }
 }
@@ -102,7 +107,7 @@ impl CompressionType {
 }
 
 /// An AssetBundle Object contains a lookup from path name to individual objects in the bundle.
-pub struct AssetBundle  {
+pub struct AssetBundle {
     pub signature: Signature,
     format_version: u32,
     pub target_version: String, // also called as unity_version
@@ -113,10 +118,10 @@ pub struct AssetBundle  {
 }
 
 impl AssetBundle {
-    pub fn load_from_file(file_path: &str) -> Result<AssetBundle, Error> {
+    pub fn load_from_file(file_path: &str) -> Result<AssetBundle> {
 
         // open file
-        let file = try!(File::open(file_path));
+        let file = File::open(file_path)?;
         let mut bin_reader = BinaryReader::new(BufReader::new(file), Endianness::Big);
 
         let mut result = AssetBundle {
@@ -129,91 +134,90 @@ impl AssetBundle {
             assets: Vec::new(),
         };
 
-         // read header
-        let signature_str = try!(bin_reader.read_string());
+        // read header
+        let signature_str = bin_reader.read_string()?;
 
-        result.format_version = try!(bin_reader.read_u32());
-        result.target_version = try!(bin_reader.read_string());
-        result.generator_version = try!(bin_reader.read_string());
+        result.format_version = bin_reader.read_u32()?;
+        result.target_version = bin_reader.read_string()?;
+        result.generator_version = bin_reader.read_string()?;
 
         match signature_str.as_ref() {
             "UnityFS" => {
-                isOptionError!(result.load_unityfs(bin_reader));
-            },
+                result.load_unityfs(bin_reader)?;
+            }
             "UnityWeb" | "UnityRaw" => {
-                result.load_raw(bin_reader, signature_str.as_ref());
-            },
+                result.load_raw(bin_reader, signature_str.as_ref())?;
+            }
             "UnityArchive" => {
-                result.load_unityarchive();
-            },
+                result.load_unityarchive()?;
+            }
             _ => {
-                return Err(Error::new(ErrorKind::InvalidData,
-                                      format!("Unknown format found: {}", signature_str)));
-            },
+                return Err(Error::InvalidSignatureError);
+            }
         };
 
         Ok(result)
     }
 
-    pub fn is_compressed(& self) -> bool {
+    pub fn is_compressed(&self) -> bool {
         match &self.signature {
             &Signature::UnityWeb(..) => true,
             _ => false,
         }
     }
 
-    fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Option<Error> { 
-        let file_size = tryOption!(buffer.read_i64());
-        let ciblock_size = tryOption!(buffer.read_u32());
-        let uiblock_size = tryOption!(buffer.read_u32());
+    fn load_unityfs(&mut self, mut buffer: BinaryReader<File>) -> Result<()> {
+        let file_size = buffer.read_i64()?;
+        let ciblock_size = buffer.read_u32()?;
+        let uiblock_size = buffer.read_u32()?;
 
         self.descriptor = FSDescriptor::UnityFs(UnityFsDescriptor {
-                                                    fs_file_size: file_size,
-                                                    ci_block_size: ciblock_size,
-                                                    ui_block_size: uiblock_size,
-                                                });
+            fs_file_size: file_size,
+            ci_block_size: ciblock_size,
+            ui_block_size: uiblock_size,
+        });
 
-        let flags = (tryOption!(buffer.read_u32()) as u8) & 0x3F;
+        let flags = (buffer.read_u32()? as u8) & 0x3F;
         let compression_type = CompressionType::from(&flags);
-        let raw_data = tryOption!(buffer.read_bytes((ciblock_size as usize)));
+        let raw_data = buffer.read_bytes((ciblock_size as usize))?;
 
-        let decompressed_data = tryOption!(decompress_data(&raw_data, &compression_type));
+        let decompressed_data = decompress_data(&raw_data, &compression_type)?;
         let dreader = BufReader::new(Cursor::new(decompressed_data.as_slice()));
         let mut data_reader = BinaryReader::new(dreader, Endianness::Big);
 
-        tryVoid!(data_reader.read_bytes(16)); // guid
+        data_reader.read_bytes(16)?; // guid
 
-        let num_blocks = tryOption!(data_reader.read_u32());
+        let num_blocks = data_reader.read_u32()?;
         let mut blocks: Vec<ArchiveBlockInfo> = vec![];
 
         for _ in 0..num_blocks {
-            let bu_size = tryOption!(data_reader.read_u32());
-            let bc_size = tryOption!(data_reader.read_u32());
-            let b_flags = tryOption!(data_reader.read_i16());
+            let bu_size = data_reader.read_u32()?;
+            let bc_size = data_reader.read_u32()?;
+            let b_flags = data_reader.read_i16()?;
 
             blocks.push(ArchiveBlockInfo {
-                            uncompressed_size: bu_size,
-                            compressed_size: bc_size,
-                            flags: b_flags,
-                        });
+                uncompressed_size: bu_size,
+                compressed_size: bc_size,
+                flags: b_flags,
+            });
         }
 
-        let num_nodes = tryOption!(data_reader.read_u32());
+        let num_nodes = data_reader.read_u32()?;
         let mut nodes: Vec<(u64, u64, u32, String)> = vec![];
         for _ in 0..num_nodes {
-            let n_offset = tryOption!(data_reader.read_u64());
-            let n_size = tryOption!(data_reader.read_u64());
-            let n_status = tryOption!(data_reader.read_u32());
-            let n_name = tryOption!(data_reader.read_string());
+            let n_offset = data_reader.read_u64()?;
+            let n_size = data_reader.read_u64()?;
+            let n_status = data_reader.read_u32()?;
+            let n_name = data_reader.read_string()?;
             nodes.push((n_offset, n_size, n_status, n_name));
         }
-        
-        self.signature = Signature::UnityFS(ArchiveBlockStorageReader::new(buffer.take_buffer(),
-                                                                         blocks));
+
+        self.signature =
+            Signature::UnityFS(ArchiveBlockStorageReader::new(buffer.take_buffer(), blocks));
 
         for (n_offset, _, _, n_name) in nodes {
-            tryVoid!(self.signature.seek(SeekFrom::Start(n_offset)));
-            let mut asset = tryOption!(Asset::new(self));
+            self.signature.seek(SeekFrom::Start(n_offset))?;
+            let mut asset = Asset::new(self)?;
             asset.name = n_name;
             self.assets.push(asset);
         }
@@ -222,63 +226,64 @@ impl AssetBundle {
             self.name = self.assets[0].name.clone();
         }
 
-        None
+        Ok(())
     }
 
-    fn load_raw(&mut self, mut buffer: BinaryReader<File>, format: &str) -> Option<Error> {
-        
+    fn load_raw(&mut self, mut buffer: BinaryReader<File>, format: &str) -> Result<()> {
+
         let mut descriptor: RawDescriptor = Default::default();
-        
-        descriptor.file_size = tryOption!(buffer.read_u32());
-		descriptor.header_size = tryOption!(buffer.read_u32());
-        descriptor.file_count = tryOption!(buffer.read_u32());
-		descriptor.bundle_count = tryOption!(buffer.read_u32());
+
+        descriptor.file_size = buffer.read_u32()?;
+        descriptor.header_size = buffer.read_u32()?;
+        descriptor.file_count = buffer.read_u32()?;
+        descriptor.bundle_count = buffer.read_u32()?;
 
         if self.format_version >= 2 {
-            descriptor.bundle_size = tryOption!(buffer.read_u32()); // without header_size
+            descriptor.bundle_size = buffer.read_u32()?; // without header_size
 
             if self.format_version >= 3 {
-                descriptor.uncompressed_bundle_size = tryOption!(buffer.read_u32()); // without header_size
+                descriptor.uncompressed_bundle_size = buffer.read_u32()?; // without header_size
             }
         }
 
         if descriptor.header_size >= 60 {
-            descriptor.compressed_file_size = tryOption!(buffer.read_u32()); // with header_size
-            descriptor.asset_header_size = tryOption!(buffer.read_u32());
+            descriptor.compressed_file_size = buffer.read_u32()?; // with header_size
+            descriptor.asset_header_size = buffer.read_u32()?;
         }
 
-        tryOption!(buffer.read_i32());
-        tryOption!(buffer.read_i8());
-        
-        self.name = tryOption!(buffer.read_string());
+        buffer.read_i32()?;
+        buffer.read_i8()?;
 
-        tryOption!(buffer.seek(SeekFrom::Start(descriptor.header_size as u64)));
+        self.name = buffer.read_string()?;
+
+        buffer.seek(SeekFrom::Start(descriptor.header_size as u64))?;
 
         let num_assets: u32;
         if !self.is_compressed() {
-            num_assets = tryOption!(buffer.read_u32());
+            num_assets = buffer.read_u32()?;
         } else {
             num_assets = 1;
         }
 
         self.signature = match format {
-            "UnityWeb" => {Signature::UnityWeb(buffer.take_buffer())},
-            "UnityRaw" => {Signature::UnityRaw(buffer.take_buffer())},
-            _ => {return Some(Error::new(ErrorKind::InvalidData, "UnityWeb/Raw format not recognized!"));},
+            "UnityWeb" => Signature::UnityWeb(buffer.take_buffer()),
+            "UnityRaw" => Signature::UnityRaw(buffer.take_buffer()),
+            _ => {
+                return Err(Error::InvalidSignatureError);
+            }
         };
-        
+
         for _ in 0..num_assets {
             // TODO: asset loading for raw
-            //let asset = tryOption!(Asset::new(&mut buffer, self));
+            //let asset = Asset::new(&mut buffer, self)?;
             //self.assets.push(asset);
         }
-        None
+        Ok(())
     }
 
-    fn load_unityarchive(&mut self) -> Option<Error> {
+    fn load_unityarchive(&mut self) -> Result<()> {
         // TODO: loading UnityArchive format
-        Some(Error::new(ErrorKind::InvalidData,
-                        "UnityArchive format is not implemented"))
+        Err(Error::FeatureNotImplementedError)
     }
 
     pub fn assets(&self) -> &Vec<Asset> {
@@ -306,7 +311,7 @@ impl ArchiveBlockInfo {
         self.compression_type() != CompressionType::None
     }
 
-    fn decompress(&self, data: Vec<u8>) -> io::Result<Vec<u8>> {
+    fn decompress(&self, data: Vec<u8>) -> Result<Vec<u8>> {
         if !self.is_compressed() {
             return Ok(data);
         }
@@ -319,13 +324,9 @@ impl ArchiveBlockInfo {
             }
             CompressionType::LZ4 |
             CompressionType::LZ4HC => {
-                let decompressed_data = vec![0; self.uncompressed_size as usize];
-                decompress_data(&decompressed_data, &compression_type)
+                return decompress_data(&data, &compression_type);
             }
-            _ => {
-                Err(Error::new(ErrorKind::InvalidData,
-                               format!("Unimplemented compression method: {:?}", compression_type)))
-            }
+            _ => Err(Error::CompressionNotImplementedError),
         }
     }
 }
@@ -350,14 +351,16 @@ pub struct ArchiveBlockStorageReader<R: Read + Seek> {
 }
 
 impl<R> ArchiveBlockStorageReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
-    fn new(mut buffer: BufReader<R>,
-           blocks: Vec<ArchiveBlockInfo>)
-           -> ArchiveBlockStorageReader<R> {
-        let virtual_size = blocks
-            .iter()
-            .fold(0, |total, next| total + next.uncompressed_size as u64);
+    fn new(
+        mut buffer: BufReader<R>,
+        blocks: Vec<ArchiveBlockInfo>,
+    ) -> ArchiveBlockStorageReader<R> {
+        let virtual_size = blocks.iter().fold(0, |total, next| {
+            total + next.uncompressed_size as u64
+        });
 
         let base_offset = buffer.tell();
 
@@ -376,10 +379,11 @@ impl<R> ArchiveBlockStorageReader<R>
     fn seek_to_block(&mut self, pos: &u64) -> io::Result<()> {
         // check if we are already in the corresponding block
         if (self.current_block_idx < 0) ||
-           ((*pos < self.current_block_offset) ||
-            (*pos >
-             (self.current_block_offset +
-              self.blocks[self.current_block_idx as usize].uncompressed_size as u64))) {
+            ((*pos < self.current_block_offset) ||
+                 (*pos >
+                      (self.current_block_offset +
+                           self.blocks[self.current_block_idx as usize].uncompressed_size as u64)))
+        {
             let mut base_offset: u64 = 0;
             let mut offset = 0;
             let mut found = false;
@@ -401,19 +405,21 @@ impl<R> ArchiveBlockStorageReader<R>
             }
 
             self.current_block_offset = offset;
-            try!(self.buffer
-                     .seek(SeekFrom::Start(self.base_offset + base_offset)));
+            self.buffer.seek(
+                SeekFrom::Start(self.base_offset + base_offset),
+            )?;
             let current_block = &self.blocks[self.current_block_idx as usize];
             let mut compressed_data = vec![0; current_block.compressed_size as usize];
-            try!(self.buffer.read_exact(compressed_data.as_mut_slice()));
-            self.current_stream = try!(current_block.decompress(compressed_data));
+            self.buffer.read_exact(compressed_data.as_mut_slice())?;
+            self.current_stream = current_block.decompress(compressed_data)?;
         }
         Ok(())
     }
 }
 
 impl<R> Read for ArchiveBlockStorageReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
 
@@ -422,23 +428,28 @@ impl<R> Read for ArchiveBlockStorageReader<R>
 
         while size != 0 && self.virtual_cursor < self.virtual_size {
             let cursor = self.virtual_cursor;
-            try!(self.seek_to_block(&cursor));
+            self.seek_to_block(&cursor)?;
 
             let current_stream_cursor = self.virtual_cursor - self.current_block_offset;
-            
+
             let current_stream_len = self.current_stream.len();
             if (current_stream_len as u64) < current_stream_cursor {
-                return Err(Error::new(ErrorKind::InvalidData,
-                                      "Error while reading block storeage"));
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Error while reading block storeage",
+                ));
             }
             let remaining = (current_stream_len as u64) - current_stream_cursor;
             let read_size = cmp::min(size, remaining as usize);
-            
+
             if read_size == 0 {
-                return Err(Error::new(ErrorKind::InvalidData,
-                                      "Error while reading block storeage"));
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Error while reading block storeage",
+                ));
             }
-            let part = &self.current_stream[(current_stream_cursor as usize)..((current_stream_cursor as usize) + read_size)];
+            let part = &self.current_stream[(current_stream_cursor as usize)..
+                                                ((current_stream_cursor as usize) + read_size)];
             size -= read_size;
             self.virtual_cursor += read_size as u64;
             bytes.extend(part);
@@ -449,7 +460,8 @@ impl<R> Read for ArchiveBlockStorageReader<R>
 }
 
 impl<R> Teller for ArchiveBlockStorageReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn tell(&mut self) -> u64 {
         self.virtual_cursor
@@ -466,7 +478,8 @@ impl<R> Teller for ArchiveBlockStorageReader<R>
 }
 
 impl<R> Seek for ArchiveBlockStorageReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let new_pos: u64;
@@ -490,14 +503,21 @@ impl<R> Seek for ArchiveBlockStorageReader<R>
             }
         };
 
-        try!(self.seek_to_block(&new_pos));
+        self.seek_to_block(&new_pos)?;
         self.virtual_cursor = new_pos;
         Ok(self.virtual_cursor)
     }
 }
 
-impl<R> fmt::Debug for ArchiveBlockStorageReader<R> where R: Read + Seek {
+impl<R> fmt::Debug for ArchiveBlockStorageReader<R>
+where
+    R: Read + Seek,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "ArchiveBlockStorageReader<> with {} blocks", self.blocks.len())
+        write!(
+            f,
+            "ArchiveBlockStorageReader<> with {} blocks",
+            self.blocks.len()
+        )
     }
 }

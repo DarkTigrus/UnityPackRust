@@ -14,8 +14,7 @@ extern crate serde_json;
 #[macro_use]
 extern crate lazy_static;
 
-#[macro_use]
-mod unitymacros;
+mod error;
 mod assetbundle;
 mod asset;
 mod object;

@@ -6,7 +6,8 @@
  */
 
 use binaryreader::Teller;
-use std::io::{Result, Read, Seek, BufReader, Cursor, Error, ErrorKind};
+use std::io::{Read, Seek, BufReader, Cursor};
+use error::{Error, Result};
 use binaryreader::{ReadExtras, Endianness};
 use enums::{RuntimePlatform, get_runtime_platform};
 use std::collections::HashMap;
@@ -22,9 +23,12 @@ pub struct TypeMetadata {
 }
 
 impl TypeMetadata {
+    pub fn new<R: Read + Seek + Teller>(
+        buffer: &mut R,
+        format: u32,
+        endianness: &Endianness,
+    ) -> Result<TypeMetadata> {
 
-    pub fn new<R: Read+Seek+ Teller>(buffer: &mut R, format: u32, endianness: &Endianness) -> Result<TypeMetadata> {
-        
         let mut result = TypeMetadata {
             generator_version: String::new(),
             target_platform: RuntimePlatform::OSXEditor,
@@ -48,9 +52,9 @@ impl TypeMetadata {
                     if class_id == 114 {
                         if script_id >= 0 {
                             //  make up a fake negative class_id to work like the
-							// old system.  class_id of -1 is taken to mean that
-							// the MonoBehaviour base class was serialized; that
-							// shouldn't happen, but it's easy to account for.
+                            // old system.  class_id of -1 is taken to mean that
+                            // the MonoBehaviour base class was serialized; that
+                            // shouldn't happen, but it's easy to account for.
                             class_id = -2 - (script_id as i32);
                         } else {
                             class_id = -1;
@@ -114,8 +118,11 @@ lazy_static! {
 }
 
 impl TypeNode {
-
-    pub fn new<R: Read+Seek+ Teller>(format: u32, buffer: &mut R, endianness: &Endianness) -> Result<TypeNode> {
+    pub fn new<R: Read + Seek + Teller>(
+        format: u32,
+        buffer: &mut R,
+        endianness: &Endianness,
+    ) -> Result<TypeNode> {
         if format == 10 || format >= 12 {
             return TypeNode::load_blob(buffer, endianness);
         } else {
@@ -123,11 +130,14 @@ impl TypeNode {
         };
     }
 
-    fn load_blob<R: Read+Seek+ Teller>(buffer: &mut R, endianness: &Endianness) -> Result<TypeNode> {
-        
+    fn load_blob<R: Read + Seek + Teller>(
+        buffer: &mut R,
+        endianness: &Endianness,
+    ) -> Result<TypeNode> {
+
         let num_nodes = try!(buffer.read_u32(endianness));
         let buffer_bytes = try!(buffer.read_u32(endianness));
-       
+
         let mut node_data = vec![0; 24 * num_nodes as usize];
         try!(buffer.read_exact(node_data.as_mut_slice()));
 
@@ -138,7 +148,7 @@ impl TypeNode {
 
         let mut parents: Vec<TypeNode> = Vec::new();
 
-        let mut current_depth:i16 = -1;
+        let mut current_depth: i16 = -1;
 
         for _ in 0..num_nodes {
             // create root element
@@ -146,8 +156,16 @@ impl TypeNode {
             let depth = try!(buf.read_u8());
 
             let is_array = try!(buf.read_u8()) == 1;
-            let type_name = try!(TypeNode::get_string_from_buffer(&buffer_bytes, &stringbuffer_data, &(try!(buf.read_i32(endianness))) ) );
-            let field_name = try!(TypeNode::get_string_from_buffer(&buffer_bytes, &stringbuffer_data, &(try!(buf.read_i32(endianness))) ) );
+            let type_name = try!(TypeNode::get_string_from_buffer(
+                &buffer_bytes,
+                &stringbuffer_data,
+                &(try!(buf.read_i32(endianness))),
+            ));
+            let field_name = try!(TypeNode::get_string_from_buffer(
+                &buffer_bytes,
+                &stringbuffer_data,
+                &(try!(buf.read_i32(endianness))),
+            ));
             let size = try!(buf.read_i32(endianness));
             let index = try!(buf.read_u32(endianness));
             let flags = try!(buf.read_i32(endianness));
@@ -169,9 +187,9 @@ impl TypeNode {
             }
 
             // find parent of current node
-            for _ in 0..((current_depth - depth as i16)+1) {
+            for _ in 0..((current_depth - depth as i16) + 1) {
                 let count = parents.len();
-                let lastnode = parents.remove(count-1);
+                let lastnode = parents.remove(count - 1);
                 parents.last_mut().unwrap().children.push(lastnode);
             }
             parents.push(node);
@@ -180,29 +198,32 @@ impl TypeNode {
 
         // unwrap remaining nodes
         let elems = parents.len();
-        for _ in 0..elems -1 {
+        for _ in 0..elems - 1 {
             // remove last element and add it to the new last element as child
             let count = parents.len();
-            let lastnode = parents.remove(count-1);
+            let lastnode = parents.remove(count - 1);
             parents.last_mut().unwrap().children.push(lastnode);
         }
 
         if parents.len() != 1 {
-            return Err(Error::new(ErrorKind::InvalidData, "Failed to parse typetree"));
+            return Err(Error::TypeError("Failed to parse typetree".to_string()));
         }
 
         let root = parents.remove(0);
         Ok(root)
     }
 
-    fn load_old<R: Read+Seek+ Teller>(buffer: &mut R, endianness: &Endianness) -> Result<TypeNode> {
+    fn load_old<R: Read + Seek + Teller>(
+        buffer: &mut R,
+        endianness: &Endianness,
+    ) -> Result<TypeNode> {
         let type_name = try!(buffer.read_string());
-		let field_name = try!(buffer.read_string());
-		let size = try!(buffer.read_i32(endianness));
-		let index = try!(buffer.read_u32(endianness));
-		let is_array = try!(buffer.read_i32(endianness)) == 1;
-		let _ = try!(buffer.read_i32(endianness)); // version, unused
-		let flags = try!(buffer.read_i32(endianness));
+        let field_name = try!(buffer.read_string());
+        let size = try!(buffer.read_i32(endianness));
+        let index = try!(buffer.read_u32(endianness));
+        let is_array = try!(buffer.read_i32(endianness)) == 1;
+        let _ = try!(buffer.read_i32(endianness)); // version, unused
+        let flags = try!(buffer.read_i32(endianness));
 
         let mut result = TypeNode {
             type_name: type_name,
@@ -223,7 +244,11 @@ impl TypeNode {
         Ok(result)
     }
 
-    fn get_string_from_buffer(buffer_bytes: &u32, buffer: &Vec<u8>, offset: &i32) -> Result<String> {
+    fn get_string_from_buffer(
+        buffer_bytes: &u32,
+        buffer: &Vec<u8>,
+        offset: &i32,
+    ) -> Result<String> {
         let string_data: &Vec<u8>;
         let mut off: usize = *offset as usize;
 

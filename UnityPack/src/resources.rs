@@ -6,14 +6,14 @@
  */
 
 use typetree::TypeMetadata;
-use std::io::{Read, Result, BufReader, ErrorKind};
+use std::io::{Read, BufReader};
 use std::io;
+use error::{Error, Result};
 use std::fs::File;
-use binaryreader::{Endianness};
-use std::error;
+use binaryreader::Endianness;
 use std::collections::HashMap;
 use serde_json;
-use std::error::Error;
+use std;
 
 const RESOURCE_PATH_STRUCT: &str = "res/structs.dat";
 const RESOURCE_PATH_STRINGS: &str = "res/strings.dat";
@@ -45,8 +45,8 @@ lazy_static! {
         let json_object: serde_json::Value = match serde_json::from_reader(bin_reader) {
             Ok(obj) => obj,
             Err(err) => {
-                println!("Failed to read {}", RESOURCE_PATH_STRUCT);
-                return Err(io::Error::new(ErrorKind::InvalidData, err.description()));
+                eprintln!("Failed to read {}", RESOURCE_PATH_STRUCT);
+                return Err(Error::ResourceError(format!("{}",err)));
             },
         };
         let object_map = json_object.as_object().unwrap();
@@ -64,9 +64,17 @@ pub fn default_type_metadata() -> Result<&'static TypeMetadata> {
     match DEFAULT_TYPE_METADATA.as_ref() {
         Ok(ref d) => Ok(d),
         Err(err) => {
-            println!("Failed to read {}", RESOURCE_PATH_STRUCT);
-            Err(io::Error::new(err.kind(), error::Error::description(err)))
-        },
+            eprintln!("Failed to read {}", RESOURCE_PATH_STRUCT);
+            match err {
+                &Error::IOError(ref e) => {
+                    Err(Error::IOError(Box::new(
+                        io::Error::new(e.kind(), std::error::Error::description(e)),
+                    )))
+                }
+                &Error::ResourceError(ref s) => Err(Error::ResourceError(s.clone())),
+                _ => Err(Error::ResourceError("Unknown".to_string())),
+            }
+        }
     }
 }
 
@@ -74,20 +82,34 @@ pub fn default_type_strings() -> Result<&'static Vec<u8>> {
     match DEFAULT_TYPE_STRINGS.as_ref() {
         Ok(ref d) => Ok(d),
         Err(err) => {
-            println!("Failed to read {}", RESOURCE_PATH_STRINGS);
-            Err(io::Error::new(err.kind(), error::Error::description(err)))
-        },
+            eprintln!("Failed to read {}", RESOURCE_PATH_STRINGS);
+            match err {
+                &Error::IOError(ref e) => {
+                    Err(Error::IOError(Box::new(
+                        io::Error::new(e.kind(), std::error::Error::description(e)),
+                    )))
+                }
+                &Error::ResourceError(ref s) => Err(Error::ResourceError(s.clone())),
+                _ => Err(Error::ResourceError("Unknown".to_string())),
+            }
+        }
     }
 }
 
 pub fn get_unity_class(type_id: &i64) -> Result<String> {
     match UNITY_CLASSES.as_ref() {
-        Ok(ref m) => {
-            Ok(m[type_id].clone())
-            },
+        Ok(ref m) => Ok(m[type_id].clone()),
         Err(err) => {
-            println!("Failed to read {}", RESOURCE_PATH_CLASSES);
-            Err(io::Error::new(err.kind(), error::Error::description(err)))
-        },
+            eprintln!("Failed to read {}", RESOURCE_PATH_CLASSES);
+            match err {
+                &Error::IOError(ref e) => {
+                    Err(Error::IOError(Box::new(
+                        io::Error::new(e.kind(), std::error::Error::description(e)),
+                    )))
+                }
+                &Error::ResourceError(ref s) => Err(Error::ResourceError(s.clone())),
+                _ => Err(Error::ResourceError("Unknown".to_string())),
+            }
+        }
     }
 }
