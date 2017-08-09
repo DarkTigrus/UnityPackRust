@@ -11,9 +11,12 @@ use std::fs::File;
 use std::io::{ErrorKind, BufReader, Read, Seek, SeekFrom, Cursor};
 use asset::Asset;
 use binaryreader::*;
+use byteorder::{LittleEndian, WriteBytesExt};
 use lz4_compress;
+use xz2;
 use lzma;
 use error::{Error, Result};
+use odds::vec::VecExt;
 
 fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>> {
     match *compression_type {
@@ -311,7 +314,7 @@ impl ArchiveBlockInfo {
         self.compression_type() != CompressionType::None
     }
 
-    fn decompress(&self, data: Vec<u8>) -> Result<Vec<u8>> {
+    fn decompress(&self, mut data: Vec<u8>) -> Result<Vec<u8>> {
         if !self.is_compressed() {
             return Ok(data);
         }
@@ -319,8 +322,20 @@ impl ArchiveBlockInfo {
         let compression_type = self.compression_type();
         match compression_type {
             CompressionType::LZMA => {
-                // TODO: LZMA decompression
-                Ok(data)
+                // LZMA decompression: Unity does not provide the uncompressed size
+                // so we have to insert it manually to get a proper lzma alone header
+                let mut uncompressed_size_vec = vec![];
+                uncompressed_size_vec.write_u64::<LittleEndian>(
+                    self.uncompressed_size as u64,
+                )?;
+
+                VecExt::splice(&mut data, 5..5, uncompressed_size_vec);
+
+                let mut decompressed_data: Vec<u8> = vec![0; self.uncompressed_size as usize];
+                let mut stream = xz2::stream::Stream::new_lzma_decoder(u64::max_value())?;
+                stream.process_vec(&data, &mut decompressed_data, xz2::stream::Action::Run)?;
+
+                Ok(decompressed_data)
             }
             CompressionType::LZ4 |
             CompressionType::LZ4HC => {

@@ -9,6 +9,7 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::result;
+use xz2::stream;
 
 #[derive(Debug)]
 pub enum Error {
@@ -62,6 +63,12 @@ impl From<Error> for io::Error {
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Error {
         Error::IOError(Box::new(error))
+    }
+}
+
+impl From<stream::Error> for Error {
+    fn from(error: stream::Error) -> Error {
+        Error::LZMADecompressionError(Box::new(error))
     }
 }
 

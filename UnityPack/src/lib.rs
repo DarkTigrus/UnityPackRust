@@ -8,8 +8,10 @@ extern crate libc;
 extern crate byteorder;
 extern crate lz4_compress;
 extern crate lzma;
+extern crate xz2;
 extern crate uuid;
 extern crate serde_json;
+extern crate odds;
 
 #[macro_use]
 extern crate lazy_static;
@@ -32,7 +34,7 @@ mod tests {
 
     #[test]
     fn test_load_assetbundle() {
-        let input_file = "/Applications/Hearthstone/Data/OSX/cards0.unity3d";
+        let input_file = "test_data/main_dxt1_bc1.unity3d";
 
         let asset_bundle = match AssetBundle::load_from_file(input_file) {
             Ok(f) => f,
@@ -43,6 +45,8 @@ mod tests {
                 return;
             }
         };
+
+        //println!("sig: {:?}", asset_bundle.signature);
 
     }
 
