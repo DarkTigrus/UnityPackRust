@@ -9,7 +9,6 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::result;
-use xz2::stream;
 
 #[derive(Debug)]
 pub enum Error {
@@ -18,6 +17,7 @@ pub enum Error {
     CompressionNotImplementedError,
     FeatureNotImplementedError,
     DataReadError,
+    CustomError(String),
     InvalidSignatureError,
     IOError(Box<io::Error>),
     UuidError(String),
@@ -44,6 +44,7 @@ impl error::Error for Error {
             &Error::ObjectError(ref s) => s,
             &Error::TypeError(ref s) => s,
             &Error::ResourceError(ref s) => s,
+            &Error::CustomError(ref s) => s,
         }
     }
 }
@@ -63,12 +64,6 @@ impl From<Error> for io::Error {
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Error {
         Error::IOError(Box::new(error))
-    }
-}
-
-impl From<stream::Error> for Error {
-    fn from(error: stream::Error) -> Error {
-        Error::LZMADecompressionError(Box::new(error))
     }
 }
 

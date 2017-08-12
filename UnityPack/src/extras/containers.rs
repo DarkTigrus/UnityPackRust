@@ -8,14 +8,16 @@
 use std::collections::HashMap;
 use std::hash::Hash;
 
-/// A HashMap which remembers its insertion order. 
+/// A HashMap which remembers its insertion order.
 pub struct OrderedMap<K, V> {
     items: HashMap<K, V>,
     indices: HashMap<usize, K>,
 }
 
-impl<K, V> OrderedMap<K, V> where K: Eq + Hash + Clone {
-
+impl<K, V> OrderedMap<K, V>
+where
+    K: Eq + Hash + Clone,
+{
     pub fn new() -> OrderedMap<K, V> {
         OrderedMap {
             items: HashMap::new(),
@@ -40,7 +42,7 @@ impl<K, V> OrderedMap<K, V> where K: Eq + Hash + Clone {
 
         let k_clone = k.clone();
         self.items.insert(k, v);
-        self.indices.insert(self.items.len()-1, k_clone);
+        self.indices.insert(self.items.len() - 1, k_clone);
 
         None
     }

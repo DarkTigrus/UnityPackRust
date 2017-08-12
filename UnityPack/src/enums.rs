@@ -5,7 +5,7 @@
  * All rights reserved 2017
  */
 
- pub enum RuntimePlatform {
+pub enum RuntimePlatform {
     OSXEditor,
     OSXPlayer,
     WindowsPlayer,
@@ -32,9 +32,9 @@
     PSM,
     XboxOne,
     SamsungTVPlayer,
- }
+}
 
- pub fn get_runtime_platform(value: u32) -> RuntimePlatform {
+pub fn get_runtime_platform(value: u32) -> RuntimePlatform {
     match value {
         0 => RuntimePlatform::OSXEditor,
         1 => RuntimePlatform::OSXPlayer,
@@ -64,4 +64,4 @@
         28 => RuntimePlatform::SamsungTVPlayer,
         _ => RuntimePlatform::OSXEditor,
     }
- }
+}

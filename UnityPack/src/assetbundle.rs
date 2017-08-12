@@ -8,12 +8,12 @@ use std::cmp;
 use std::fmt;
 use std::io;
 use std::fs::File;
-use std::io::{ErrorKind, BufReader, Read, Seek, SeekFrom, Cursor};
+use std::io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom};
 use asset::Asset;
 use binaryreader::*;
 use byteorder::{LittleEndian, WriteBytesExt};
 use lz4_compress;
-use xz2;
+use extras::lzma::decompress_raw;
 use lzma;
 use error::{Error, Result};
 use odds::vec::VecExt;
@@ -289,8 +289,17 @@ impl AssetBundle {
         Err(Error::FeatureNotImplementedError)
     }
 
-    pub fn assets(&self) -> &Vec<Asset> {
-        &self.assets
+    pub fn num_assets(&self) -> usize {
+        self.assets.len()
+    }
+
+    pub fn get_asset(&mut self, idx: usize) -> Result<&Asset> {
+        if !self.assets[idx].is_loaded {
+            let mut asset = self.assets.remove(idx);
+            asset.load_objects(self)?;
+            self.assets.insert(idx, asset);
+        }
+        Ok(&self.assets[idx])
     }
 }
 
@@ -321,22 +330,7 @@ impl ArchiveBlockInfo {
 
         let compression_type = self.compression_type();
         match compression_type {
-            CompressionType::LZMA => {
-                // LZMA decompression: Unity does not provide the uncompressed size
-                // so we have to insert it manually to get a proper lzma alone header
-                let mut uncompressed_size_vec = vec![];
-                uncompressed_size_vec.write_u64::<LittleEndian>(
-                    self.uncompressed_size as u64,
-                )?;
-
-                VecExt::splice(&mut data, 5..5, uncompressed_size_vec);
-
-                let mut decompressed_data: Vec<u8> = vec![0; self.uncompressed_size as usize];
-                let mut stream = xz2::stream::Stream::new_lzma_decoder(u64::max_value())?;
-                stream.process_vec(&data, &mut decompressed_data, xz2::stream::Action::Run)?;
-
-                Ok(decompressed_data)
-            }
+            CompressionType::LZMA => decompress_raw(&data, self.uncompressed_size as usize),
             CompressionType::LZ4 |
             CompressionType::LZ4HC => {
                 return decompress_data(&data, &compression_type);

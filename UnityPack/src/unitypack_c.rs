@@ -4,6 +4,7 @@
  *
  * All rights reserved 2017
  */
+/*
 use std::ffi::CStr;
 use std::ffi::CString;
 use std::os::raw::c_char;
@@ -88,7 +89,7 @@ pub extern "C" fn unitypack_free_rust_string(s: *mut c_char) {
 
 #[no_mangle]
 pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle) -> uint32_t {
-    let mut _asset = unsafe { &mut *asset_ptr };
+    /*let mut _asset = unsafe { &mut *asset_ptr };
     let mut _bundle = unsafe { &mut *bundle_ptr };
 
     let objects = match _asset.get_objects(_bundle) {
@@ -98,7 +99,8 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
             return 0;
         },
     };
-    objects.len() as uint32_t
+    objects.len() as uint32_t*/
+    0
 }
 
 #[no_mangle]
@@ -156,3 +158,4 @@ pub extern "C" fn unitypack_get_object_type(obj_ptr: *mut ObjectInfo, asset_ptr:
     let c_str_type = CString::new(_object.get_type(_asset, _bundle).clone()).unwrap();
     c_str_type.into_raw()
 }
+*/

@@ -23,8 +23,8 @@ use error::{Error, Result};
 pub struct Asset {
     pub name: String,
     pub bundle_offset: u64,
-    objects: HashMap<i64, ObjectInfo>,
-    is_loaded: bool,
+    pub objects: HashMap<i64, ObjectInfo>,
+    pub is_loaded: bool,
     pub endianness: Endianness,
     pub tree: Option<TypeMetadata>,
     pub types: HashMap<i64, Arc<TypeNode>>,
@@ -127,14 +127,11 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn get_objects(
-        &mut self,
-        bundle: &mut AssetBundle,
-    ) -> io::Result<&HashMap<i64, ObjectInfo>> {
+    pub fn load_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<()> {
         if !self.is_loaded {
             self.load(bundle)?;
         }
-        Ok(&self.objects)
+        Ok(())
     }
 
     fn load(&mut self, bundle: &mut AssetBundle) -> Result<()> {
@@ -164,12 +161,16 @@ impl Asset {
 
     fn load_from_buffer<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> Result<()> {
         let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
-
+        println!("self.bundle_offset: {}", self.bundle_offset);
         self.metadata_size = buffer.read_u32(&self.endianness)?;
         self.file_size = buffer.read_u32(&self.endianness)?;
         self.format = buffer.read_u32(&self.endianness)?;
         self.data_offset = buffer.read_u32(&self.endianness)?;
 
+        println!("self.metadata_size: {}", self.metadata_size);
+        println!("self.file_size: {}", self.file_size);
+        println!("self.format: {}", self.format);
+        println!("self.data_offset: {}", self.data_offset);
         if self.format >= 9 {
             self.endianness = match buffer.read_u32(&self.endianness)? {
                 0 => Endianness::Little,

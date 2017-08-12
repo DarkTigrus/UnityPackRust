@@ -8,7 +8,7 @@ extern crate libc;
 extern crate byteorder;
 extern crate lz4_compress;
 extern crate lzma;
-extern crate xz2;
+extern crate lzma_sys;
 extern crate uuid;
 extern crate serde_json;
 extern crate odds;
@@ -36,7 +36,7 @@ mod tests {
     fn test_load_assetbundle() {
         let input_file = "test_data/main_dxt1_bc1.unity3d";
 
-        let asset_bundle = match AssetBundle::load_from_file(input_file) {
+        let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
             Ok(f) => f,
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
@@ -46,7 +46,16 @@ mod tests {
             }
         };
 
-        //println!("sig: {:?}", asset_bundle.signature);
+        assert_eq!(asset_bundle.assets.len(), 1);
+        println!("load asset1");
+        let asset = asset_bundle.get_asset(0).unwrap();
+
+        assert_eq!(asset.name, "CAB-ba01e3c16ba268ec36e9543a39dc83ad");
+
+        assert_eq!(asset.objects.len(), 2);
+
+
+
 
     }
 

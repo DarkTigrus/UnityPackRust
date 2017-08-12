@@ -9,7 +9,7 @@ use std::io;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use std::fmt;
 
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Endianness {
     Big = 1,
     Little = 0,
@@ -18,8 +18,8 @@ pub enum Endianness {
 impl fmt::Display for Endianness {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-           Endianness::Big => write!(f, "Big endian"),
-           Endianness::Little => write!(f, "Little endian"),
+            Endianness::Big => write!(f, "Big endian"),
+            Endianness::Little => write!(f, "Little endian"),
         }
     }
 }
@@ -38,13 +38,13 @@ pub trait ReadExtras: io::Read {
     }
 
     fn read_string_sized(&mut self, size: usize) -> io::Result<String> {
-        
+
         let mut buf = vec![0; size];
         try!(self.read_exact(buf.as_mut_slice()));
 
         match String::from_utf8(buf) {
             Ok(s) => Ok(s),
-            Err(err) => {Err(Error::new(ErrorKind::InvalidData, format!("{}", err) ))},
+            Err(err) => Err(Error::new(ErrorKind::InvalidData, format!("{}", err))),
         }
     }
 
@@ -109,7 +109,6 @@ pub trait ReadExtras: io::Read {
             Endianness::Big => ReadBytesExt::read_f32::<BigEndian>(self),
         }
     }
-    
 }
 impl<R: io::Read + ?Sized> ReadExtras for R {}
 
@@ -119,7 +118,8 @@ pub trait Teller {
 }
 
 impl<R> Teller for BufReader<R>
-    where R: Seek
+where
+    R: Seek,
 {
     fn tell(&mut self) -> u64 {
         match self.seek(SeekFrom::Current(0)) {
@@ -132,7 +132,7 @@ impl<R> Teller for BufReader<R>
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
-            let _ =self.seek(SeekFrom::Start(new as u64));
+            let _ = self.seek(SeekFrom::Start(new as u64));
         }
     }
 }
@@ -144,7 +144,8 @@ pub struct BinaryReader<R: Read + Seek> {
 }
 
 impl<R> BinaryReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     pub fn new(readable: BufReader<R>, endianness: Endianness) -> BinaryReader<R> {
         BinaryReader {
@@ -209,7 +210,8 @@ impl<R> BinaryReader<R>
 }
 
 impl<R> Teller for BinaryReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn tell(&mut self) -> u64 {
         self.cursor
@@ -226,7 +228,8 @@ impl<R> Teller for BinaryReader<R>
 }
 
 impl<R> Read for BinaryReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let current_cursor = self.cursor;
@@ -244,11 +247,15 @@ impl<R> Read for BinaryReader<R>
 }
 
 impl<R> Seek for BinaryReader<R>
-    where R: Read + Seek
+where
+    R: Read + Seek,
 {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self.buffer.seek(pos) {
-            Ok(p) => {self.cursor = p; return Ok(p)},
+            Ok(p) => {
+                self.cursor = p;
+                return Ok(p);
+            }
             Err(err) => Err(err),
         }
     }

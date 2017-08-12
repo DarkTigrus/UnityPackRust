@@ -41,7 +41,7 @@ lazy_static! {
     static ref UNITY_CLASSES: Result<HashMap<i64, String>> = {
         let file = try!(File::open(RESOURCE_PATH_CLASSES));
         let bin_reader = BufReader::new(file);
-        
+
         let json_object: serde_json::Value = match serde_json::from_reader(bin_reader) {
             Ok(obj) => obj,
             Err(err) => {
