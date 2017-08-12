@@ -127,33 +127,33 @@ impl Asset {
         self.name.as_str().ends_with(".resource")
     }
 
-    pub fn load_objects(&mut self, bundle: &mut AssetBundle) -> io::Result<()> {
+    pub fn load_objects(&mut self, signature: &mut Signature) -> io::Result<()> {
         if !self.is_loaded {
-            self.load(bundle)?;
+            self.load(signature)?;
         }
         Ok(())
     }
 
-    fn load(&mut self, bundle: &mut AssetBundle) -> Result<()> {
+    fn load(&mut self, signature: &mut Signature) -> Result<()> {
         if self.is_resource() {
             self.is_loaded = true;
             return Ok(());
         }
 
-        match bundle.signature {
-            Signature::UnityFS(ref mut buf) => {
+        match signature {
+            &mut Signature::UnityFS(ref mut buf) => {
                 return self.load_from_buffer(buf);
             }
-            Signature::UnityRaw(ref mut buf) => {
+            &mut Signature::UnityRaw(ref mut buf) => {
                 return self.load_from_buffer(buf);
             }
-            Signature::UnityRawCompressed(ref mut buf) => {
+            &mut Signature::UnityRawCompressed(ref mut buf) => {
                 return self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice())));
             }
             _ => {
                 return Err(Error::AssetError(format!(
                     "Signature not supported for loading objects: {:?}",
-                    bundle.signature
+                    signature
                 )))
             }
         }
@@ -161,16 +161,11 @@ impl Asset {
 
     fn load_from_buffer<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> Result<()> {
         let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
-        println!("self.bundle_offset: {}", self.bundle_offset);
         self.metadata_size = buffer.read_u32(&self.endianness)?;
         self.file_size = buffer.read_u32(&self.endianness)?;
         self.format = buffer.read_u32(&self.endianness)?;
         self.data_offset = buffer.read_u32(&self.endianness)?;
 
-        println!("self.metadata_size: {}", self.metadata_size);
-        println!("self.file_size: {}", self.file_size);
-        println!("self.format: {}", self.format);
-        println!("self.data_offset: {}", self.data_offset);
         if self.format >= 9 {
             self.endianness = match buffer.read_u32(&self.endianness)? {
                 0 => Endianness::Little,

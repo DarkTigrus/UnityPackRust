@@ -295,9 +295,7 @@ impl AssetBundle {
 
     pub fn get_asset(&mut self, idx: usize) -> Result<&Asset> {
         if !self.assets[idx].is_loaded {
-            let mut asset = self.assets.remove(idx);
-            asset.load_objects(self)?;
-            self.assets.insert(idx, asset);
+            self.assets[idx].load_objects(&mut self.signature);
         }
         Ok(&self.assets[idx])
     }

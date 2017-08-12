@@ -47,12 +47,17 @@ mod tests {
         };
 
         assert_eq!(asset_bundle.assets.len(), 1);
-        println!("load asset1");
+        println!("load asset 1");
         let asset = asset_bundle.get_asset(0).unwrap();
 
         assert_eq!(asset.name, "CAB-ba01e3c16ba268ec36e9543a39dc83ad");
 
-        assert_eq!(asset.objects.len(), 2);
+        let objects = &asset.objects;
+        assert_eq!(objects.len(), 4);
+
+        for (id, ref info) in objects.iter() {
+            println!("{}: {}", id, info); 
+        }
 
 
 
