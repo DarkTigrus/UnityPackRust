@@ -5,6 +5,7 @@
  * All rights reserved 2017
  */
 
+#[derive(Debug)]
 pub enum RuntimePlatform {
     OSXEditor,
     OSXPlayer,

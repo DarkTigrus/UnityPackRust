@@ -65,16 +65,18 @@ mod tests {
             if type_name == "Texture2D" {
                 let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
                 let texture = match engine_object {
-                    ObjectValue::EngineObject(engine_object) => engine_object.to_texture2d(),
+                    ObjectValue::EngineObject(engine_object) => engine_object.to_texture2d().unwrap(),
                     _ => {panic!("Invalid engine object");}
                 };
 
                 println!(
-                    "{}: {} ({}x{})",
+                    "{}: {} ({}x{}) - {} bytes, format: {:?}",
                     type_name,
                     texture.name,
                     texture.width,
-                    texture.height
+                    texture.height,
+                    texture.data.len(),
+                    texture.texture_format
                 );
                 
             }

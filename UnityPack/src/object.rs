@@ -7,6 +7,7 @@
 use asset::Asset;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::io;
+use std::clone::Clone;
 use error::{Error, Result};
 use binaryreader::{BinaryReader, ReadExtras, Teller};
 use std::fmt;
@@ -325,6 +326,14 @@ pub enum ObjectValue {
     None,
 }
 
+pub trait ToByteVec<T> {
+    fn to_byte_vec(&self) -> Result<Vec<T>>;
+}
+/*
+pub trait ToVec<T> {
+    fn to_vec(&self) -> Result<Vec<T>>;
+}*/
+
 impl ObjectValue {
     pub fn to_bool(&self) -> Result<bool> {
         match self {
@@ -347,6 +356,31 @@ impl ObjectValue {
         }
     }
 }
+
+impl ToByteVec<u8> for ObjectValue {
+    fn to_byte_vec(&self) -> Result<Vec<u8>> {
+        match self {
+            &ObjectValue::U8Array(ref s) => {
+                Ok(s.clone())
+            },
+            _ => Err(Error::ObjectError("ObjectValue is not u8 array variant".to_string())),
+        }
+    }
+}
+/*
+impl<T: Clone> ToVec<T> for ObjectValue {
+    fn to_vec(&self) -> Result<Vec<T>> {
+        match self {
+            &ObjectValue::Array(ref s) => {
+                if s.len() != 0 {}
+                // match type etc..
+                let mut result: 
+                Ok(s.clone())
+            },
+            _ => Err(Error::ObjectError("ObjectValue is not u8 array variant".to_string())),
+        }
+    }
+}*/
 
 pub struct ObjectPointer {
     pub type_name: String,

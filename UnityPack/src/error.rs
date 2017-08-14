@@ -25,6 +25,7 @@ pub enum Error {
     ObjectError(String),
     TypeError(String),
     ResourceError(String),
+    EngineError(String),
 }
 
 impl error::Error for Error {
@@ -45,6 +46,7 @@ impl error::Error for Error {
             &Error::TypeError(ref s) => s,
             &Error::ResourceError(ref s) => s,
             &Error::CustomError(ref s) => s,
+            &Error::EngineError(ref s) => s,
         }
     }
 }
