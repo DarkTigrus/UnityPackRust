@@ -268,7 +268,7 @@ impl Asset {
         Ok(())
     }
 
-    pub fn read_id<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> io::Result<i64> {
+    pub fn read_id<R: Read + Seek + Teller>(&self, buffer: &mut R) -> io::Result<i64> {
         if self.format >= 14 {
             return buffer.read_i64(&self.endianness);
         }

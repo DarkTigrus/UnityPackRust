@@ -50,4 +50,8 @@ where
     pub fn len(&self) -> usize {
         self.items.len()
     }
+
+    pub fn get(&self, k: &K) -> Option<&V> {
+        self.items.get(k)
+    }
 }

@@ -17,8 +17,8 @@ extern crate odds;
 extern crate lazy_static;
 
 mod error;
-mod assetbundle;
-mod asset;
+pub mod assetbundle;
+pub mod asset;
 mod object;
 mod binaryreader;
 mod typetree;
@@ -26,11 +26,15 @@ mod enums;
 mod resources;
 pub mod unitypack_c;
 mod extras;
+mod engine;
 
 #[cfg(test)]
 mod tests {
 
     use assetbundle::*;
+    use object::*;
+    use engine::texture::Texture2D;
+    use engine::texture::IntoTexture2D;
 
     #[test]
     fn test_load_assetbundle() {
@@ -48,15 +52,32 @@ mod tests {
 
         assert_eq!(asset_bundle.assets.len(), 1);
         println!("load asset 1");
-        let asset = asset_bundle.get_asset(0).unwrap();
+        asset_bundle.resolve_asset(0).unwrap();
+        let asset = &asset_bundle.assets[0];
 
         assert_eq!(asset.name, "CAB-ba01e3c16ba268ec36e9543a39dc83ad");
 
         let objects = &asset.objects;
         assert_eq!(objects.len(), 4);
 
-        for (id, ref info) in objects.iter() {
-            println!("{}: {}", id, info); 
+        for (_, ref obj) in objects.iter() {
+            let type_name = obj.get_type(asset, &mut asset_bundle.signature);
+            if type_name == "Texture2D" {
+                let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
+                let texture = match engine_object {
+                    ObjectValue::EngineObject(engine_object) => engine_object.to_texture2d(),
+                    _ => {panic!("Invalid engine object");}
+                };
+
+                println!(
+                    "{}: {} ({}x{})",
+                    type_name,
+                    texture.name,
+                    texture.width,
+                    texture.height
+                );
+                
+            }
         }
 
 

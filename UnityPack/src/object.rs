@@ -5,22 +5,23 @@
  * All rights reserved 2017
  */
 use asset::Asset;
-use std::io::{Read, Seek, SeekFrom, BufReader, Cursor};
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::io;
 use error::{Error, Result};
-use binaryreader::{Teller, ReadExtras, BinaryReader};
+use binaryreader::{BinaryReader, ReadExtras, Teller};
 use std::fmt;
 use std::sync::Arc;
 use typetree::{TypeNode, DEFAULT_TYPENODE};
 use resources::{default_type_metadata, get_unity_class};
-use assetbundle::{AssetBundle, Signature};
+use assetbundle::Signature;
 use extras::containers::OrderedMap;
+use engine::{EngineObject, EngineObjectVariant};
 
 pub struct ObjectInfo {
     pub type_id: i64,
     pub path_id: i64,
     pub class_id: i16,
-    pub typename: String,
+    pub type_name: String,
     data_offset: u32,
     size: u32,
     is_destroyed: bool,
@@ -33,7 +34,7 @@ impl ObjectInfo {
             type_id: 0,
             path_id: 0,
             class_id: 0,
-            typename: String::from("Unknown"),
+            type_name: String::from("Unknown"),
             data_offset: 0,
             size: 0,
             is_destroyed: false,
@@ -80,20 +81,26 @@ impl ObjectInfo {
         return asset.read_id(buffer);
     }
 
-    pub fn get_type(&self, asset: &mut Asset, bundle: &mut AssetBundle) -> String {
+    pub fn get_type(&self, asset: &Asset, signature: &mut Signature) -> String {
         if self.type_id > 0 {
             return match get_unity_class(&self.type_id) {
                 Ok(type_str) => type_str,
                 Err(_) => format!("<Unknown {}>", self.type_id),
             };
         } else if !asset.typenames.contains_key(&self.type_id) {
-            let rawdata = self.read(asset, bundle);
-            // TODO
+            let rawdata = match self.read(asset, signature) {
+                Ok(object_value) => object_value,
+                Err(_) => {
+                    return format!("<Unknown {}>", self.type_id);
+                }
+            };
+            // TODO: script type names
+            // let script = rawdata["m_Script"]
         }
-        String::new()
+        asset.typenames.get(&self.type_id).unwrap().clone()
     }
 
-    fn get_type_tree(&self, asset: &mut Asset) -> Arc<TypeNode> {
+    fn get_type_tree(&self, asset: &Asset) -> Arc<TypeNode> {
         if self.type_id < 0 {
             match asset.tree {
                 Some(ref tree) => {
@@ -119,15 +126,15 @@ impl ObjectInfo {
         asset.types[&self.type_id].clone()
     }
 
-    fn read(&self, asset: &mut Asset, bundle: &mut AssetBundle) -> Result<ObjectValue> {
-        match bundle.signature {
-            Signature::UnityFS(ref mut buf) => {
+    pub fn read(&self, asset: &Asset, signature: &mut Signature) -> Result<ObjectValue> {
+        match signature {
+            &mut Signature::UnityFS(ref mut buf) => {
                 return self.read_value(asset, buf);
             }
-            Signature::UnityRaw(ref mut buf) => {
+            &mut Signature::UnityRaw(ref mut buf) => {
                 return self.read_value(asset, buf);
             }
-            Signature::UnityRawCompressed(ref mut buf) => {
+            &mut Signature::UnityRawCompressed(ref mut buf) => {
                 return self.read_value(asset, &mut BufReader::new(Cursor::new(buf.as_slice())));
             }
             _ => return Err(Error::InvalidSignatureError),
@@ -136,7 +143,7 @@ impl ObjectInfo {
 
     fn read_value<R: Read + Seek + Teller>(
         &self,
-        asset: &mut Asset,
+        asset: &Asset,
         buffer: &mut R,
     ) -> Result<ObjectValue> {
         let _ = buffer.seek(SeekFrom::Start(
@@ -155,7 +162,7 @@ impl ObjectInfo {
 
     fn read_value_from_buffer<R: Read + Seek>(
         &self,
-        asset: &mut Asset,
+        asset: &Asset,
         typetree: &TypeNode,
         buffer: &mut BinaryReader<R>,
     ) -> Result<ObjectValue> {
@@ -164,13 +171,13 @@ impl ObjectInfo {
         let pos_before = buffer.tell();
         let ref t = typetree.type_name;
 
-        let mut result = ObjectValue::None;
+        let result;
         if t == "bool" {
             result = ObjectValue::Bool(try!(buffer.read_bool()));
         } else if t == "UInt8" {
             result = ObjectValue::U8(try!(buffer.read_u8()));
         } else if t == "SInt8" {
-            result = ObjectValue::I8(try!(buffer.read_i8()));
+            result = ObjectValue::I8(buffer.read_i8()?);
         } else if t == "UInt16" {
             result = ObjectValue::U16(try!(buffer.read_u16()));
         } else if t == "SInt16" {
@@ -188,6 +195,7 @@ impl ObjectInfo {
         } else if t == "string" {
             let size = try!(buffer.read_u32());
             result = ObjectValue::String(try!(buffer.read_string_sized(size as usize)));
+            align = typetree.children[0].post_align();
         } else {
 
             let ref first_child: TypeNode;
@@ -232,16 +240,16 @@ impl ObjectInfo {
                     )));
                 }
 
-                let first = try!(self.read_value_from_buffer(
+                let first = self.read_value_from_buffer(
                     asset,
                     &typetree.children[0],
                     buffer,
-                ));
-                let second = try!(self.read_value_from_buffer(
+                )?;
+                let second = self.read_value_from_buffer(
                     asset,
                     &typetree.children[1],
                     buffer,
-                ));
+                )?;
                 result = ObjectValue::Pair((Box::new(first), Box::new(second)));
             } else {
                 let mut ordered_map: OrderedMap<String, ObjectValue> = OrderedMap::new();
@@ -251,24 +259,52 @@ impl ObjectInfo {
                     ordered_map.insert(type_child.field_name.clone(), child);
                 }
 
-                // let result = load_object(typetree, ordered_map);
+                result = load_object(t, ordered_map);
+                if t == "StreamedResource" {
+                    //TODO: result.asset = self.resolve_streaming_asset(result.source);
+                } else if t == "StreamingInfo" {
+                    //TODO: result.asset = self.resolve_streaming_asset(result.path);
+                }
             }
-
-
         }
 
-        // TODO: read_value_from_buffer
+        // Check to make sure we read at least as many bytes the tree says.
+        // We allow reading more for the case of alignment.
+        let pos_after = buffer.tell();
+        let actual_size = pos_after - pos_before;
+        if (expected_size > 0) && (actual_size < expected_size as u64) {
+            return Err(Error::ObjectError(format!(
+                "Expected read_value({}) to read {} bytes, but only read {} bytes",
+                typetree,
+                expected_size,
+                actual_size
+            )));
+        }
+        if align || typetree.post_align() {
+            buffer.align();
+        }
+
         Ok(result)
+    }
+}
+
+fn load_object(type_name: &String, ordered_map: OrderedMap<String, ObjectValue>) -> ObjectValue {
+    match EngineObject::new(type_name, ordered_map) {
+        EngineObjectVariant::EngineObject(engine_object) => ObjectValue::EngineObject(
+            engine_object,
+        ),
+        EngineObjectVariant::NotImplemented(map_object) => ObjectValue::Map(map_object),
     }
 }
 
 impl fmt::Display for ObjectInfo {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "<{} {}>", self.typename, self.class_id)
+        write!(f, "<{} {}>", self.type_name, self.class_id)
     }
 }
 
 pub enum ObjectValue {
+    // Primitive types
     Bool(bool),
     U8(u8),
     I8(i8),
@@ -284,12 +320,36 @@ pub enum ObjectValue {
     U8Array(Vec<u8>),
     Array(Vec<ObjectValue>),
     Pair((Box<ObjectValue>, Box<ObjectValue>)),
-    // TODO
+    Map(OrderedMap<String, ObjectValue>),
+    EngineObject(EngineObject),
     None,
 }
 
+impl ObjectValue {
+    pub fn to_bool(&self) -> Result<bool> {
+        match self {
+            &ObjectValue::Bool(b) => Ok(b),
+            _ => Err(Error::ObjectError("ObjectValue is not bool variant".to_string())),
+        }
+    }
+
+    pub fn to_i32(&self) -> Result<i32> {
+        match self {
+            &ObjectValue::I32(b) => Ok(b),
+            _ => Err(Error::ObjectError("ObjectValue is not i32 variant".to_string())),
+        }
+    }
+
+    pub fn to_string(&self) -> Result<String> {
+        match self {
+            &ObjectValue::String(ref s) => Ok(s.clone()),
+            _ => Err(Error::ObjectError("ObjectValue is not string variant".to_string())),
+        }
+    }
+}
+
 pub struct ObjectPointer {
-    type_name: String,
+    pub type_name: String,
     file_id: i32,
     path_id: i64,
 }
@@ -303,11 +363,7 @@ impl ObjectPointer {
         }
     }
 
-    fn load<R: Read + Seek>(
-        &mut self,
-        asset: &mut Asset,
-        buffer: &mut BinaryReader<R>,
-    ) -> Result<()> {
+    fn load<R: Read + Seek>(&mut self, asset: &Asset, buffer: &mut BinaryReader<R>) -> Result<()> {
         self.file_id = try!(buffer.read_i32());
         self.path_id = try!(asset.read_id(buffer));
 

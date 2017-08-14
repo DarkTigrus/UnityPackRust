@@ -7,7 +7,6 @@
 use lzma_sys::*;
 use error::{Error, Result};
 use byteorder::{ReadBytesExt, LittleEndian};
-use std::io::Read;
 use std::mem;
 use libc;
 
@@ -24,10 +23,7 @@ pub fn decompress_raw(mut compressed_data: &[u8], decompressed_size: usize) -> R
     unsafe {
 
         let mut option: lzma_options_lzma = mem::zeroed();
-        lzma_lzma_preset(
-            &mut option as *mut lzma_options_lzma,
-            LZMA_PRESET_DEFAULT,
-        );
+        lzma_lzma_preset(&mut option as *mut lzma_options_lzma, LZMA_PRESET_DEFAULT);
 
         option.dict_size = dict_size;
         option.lc = lc as u32;

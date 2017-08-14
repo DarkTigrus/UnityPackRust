@@ -11,12 +11,10 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom};
 use asset::Asset;
 use binaryreader::*;
-use byteorder::{LittleEndian, WriteBytesExt};
 use lz4_compress;
 use extras::lzma::decompress_raw;
 use lzma;
 use error::{Error, Result};
-use odds::vec::VecExt;
 
 fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>> {
     match *compression_type {
@@ -293,11 +291,11 @@ impl AssetBundle {
         self.assets.len()
     }
 
-    pub fn get_asset(&mut self, idx: usize) -> Result<&Asset> {
+    pub fn resolve_asset(&mut self, idx: usize) -> Result<()> {
         if !self.assets[idx].is_loaded {
-            self.assets[idx].load_objects(&mut self.signature);
+            self.assets[idx].load_objects(&mut self.signature)?;
         }
-        Ok(&self.assets[idx])
+        Ok(())
     }
 }
 
@@ -321,7 +319,7 @@ impl ArchiveBlockInfo {
         self.compression_type() != CompressionType::None
     }
 
-    fn decompress(&self, mut data: Vec<u8>) -> Result<Vec<u8>> {
+    fn decompress(&self, data: Vec<u8>) -> Result<Vec<u8>> {
         if !self.is_compressed() {
             return Ok(data);
         }

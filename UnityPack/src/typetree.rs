@@ -12,6 +12,7 @@ use binaryreader::{ReadExtras, Endianness};
 use enums::{RuntimePlatform, get_runtime_platform};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::fmt;
 use resources;
 
 pub struct TypeMetadata {
@@ -270,5 +271,20 @@ impl TypeNode {
 
     pub fn post_align(&self) -> bool {
         (self.flags & 0x4000) != 0
+    }
+}
+
+impl fmt::Display for TypeNode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "<{} {} (size={}, index={}, is_array={}, flags={})>",
+            self.type_name,
+            self.field_name,
+            self.size,
+            self.index,
+            self.is_array,
+            self.flags
+        )
     }
 }
