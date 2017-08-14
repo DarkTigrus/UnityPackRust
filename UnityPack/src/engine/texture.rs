@@ -8,6 +8,8 @@
 use super::EngineObject;
 use object::ToByteVec;
 use error::{Error, Result};
+use bcndecode::{BcnDecoderFormat, BcnEncoding, decode};
+use decrunch::CrunchedData;
 
 pub struct Texture2D {
     pub height: u32,
@@ -17,6 +19,73 @@ pub struct Texture2D {
     pub texture_format: TextureFormat,
 }
 
+impl Texture2D {
+    pub fn to_image(self) -> Result<Vec<u8>> {
+        let encoding = match self.texture_format {
+            TextureFormat::DXT1 | TextureFormat::DXT1Crunched => BcnEncoding::Bc1,
+            TextureFormat::DXT5 | TextureFormat::DXT5Crunched => BcnEncoding::Bc3,
+            TextureFormat::BC4 => BcnEncoding::Bc4,
+            TextureFormat::BC5 => BcnEncoding::Bc5,
+            TextureFormat::BC6H => BcnEncoding::Bc6H,
+            // RAW formats
+            TextureFormat::Alpha8 |
+            TextureFormat::ARGB4444 |
+            TextureFormat::RGBA4444 |
+            TextureFormat::RGB565 |
+            TextureFormat::RGB24 |
+            TextureFormat::RGBA32 |
+            TextureFormat::ARGB32 => {
+                return Ok(self.data);
+            }
+            _ => {
+                return Err(Error::EngineError(format!(
+                    "Image encoding is not supported: {:?}",
+                    self.texture_format
+                )));
+            }
+        };
+
+        let format = match self.texture_format.pixel_format() {
+            PixelFormat::RGB |  PixelFormat::RGB16 => {
+                BcnDecoderFormat::RGBA
+            }
+            _ => {
+                match self.texture_format {
+                    TextureFormat::BC4 => {
+                        BcnDecoderFormat::LUM
+                    }
+                    TextureFormat::BC6H => {
+                        BcnDecoderFormat::RGBA
+                    }
+                    _ => {
+                        BcnDecoderFormat::RGBA
+                    }
+                }
+            }
+        };
+        
+
+        // decrunch if needed
+        let input_data = match self.texture_format {
+            TextureFormat::DXT1Crunched | TextureFormat::DXT5Crunched => {
+                let crunched_data = CrunchedData::new(&self.data);
+                match crunched_data.decode_level(0) {
+                    Some(data) => data,
+                    None => {return Err(Error::EngineError(format!(
+                    "DXT decrunch failed"
+                ))); } 
+                }
+            }
+            _ => self.data
+        };
+
+        match decode(&input_data, self.width as usize, self.height as usize, encoding, format) {
+            Ok(result) => Ok(result),
+            Err(err) => Err(Error::from(err))
+        }
+    }
+}
+
 impl IntoTexture2D for EngineObject {
     fn to_texture2d(self) -> Result<Texture2D> {
         Ok(Texture2D {
@@ -24,7 +93,9 @@ impl IntoTexture2D for EngineObject {
             width: tryGet!(self.map, "m_Width").to_i32()? as u32,
             name: tryGet!(self.map, "m_Name").to_string()?,
             data: tryGet!(self.map, "image data").to_byte_vec()?,
-            texture_format: TextureFormat::from_u32(tryGet!(self.map, "m_TextureFormat").to_i32()? as u32)?,
+            texture_format: TextureFormat::from_u32(
+                tryGet!(self.map, "m_TextureFormat").to_i32()? as u32,
+            )?,
         })
     }
 }
@@ -59,47 +130,47 @@ pub enum TextureFormat {
     BC6H,
 
     // PowerVR
-    PVRTC_RGB2,
-    PVRTC_2BPP_RGB,
-    PVRTC_RGBA2,
-    PVRTC_2BPP_RGBA,
-    PVRTC_RGB4,
-    PVRTC_4BPP_RGB,
-    PVRTC_RGBA4,
-    PVRTC_4BPP_RGBA,
+    PvrtcRgb2,
+    Pvrtc2bppRgb,
+    PvrtcRgba2,
+    Pvrtc2bppRgba,
+    PvrtcRgb4,
+    Pvrtc4bppRgb,
+    PvrtcRgba4,
+    Pvrtc4bppRgba,
 
     // Ericsson (Android)
-    ETC_RGB4,
-    ATC_RGB4,
-    ATC_RGBA8,
+    EtcRgb4,
+    AtcRgb4,
+    AtcRgba8,
 
     // Adobe ATF
-    ATF_RGB_DXT1,
-    ATF_RGBA_JPG,
-    ATF_RGB_JPG,
+    AtfRgbDxt1,
+    AtfRgbaJpg,
+    AtfRgbJpg,
 
     // Ericsson
-    EAC_R,
-    EAC_R_SIGNED,
-    EAC_RG,
-    EAC_RG_SIGNED,
-    ETC2_RGB,
-    ETC2_RGBA1,
-    ETC2_RGBA8,
+    EacR,
+    EacRSigned,
+    EacRg,
+    EacRgSigned,
+    Etc2Rgb,
+    Etc2Rgba1,
+    Etc2Rgba8,
 
     // OpenGL / GLES
-    ASTC_RGB_4x4,
-    ASTC_RGB_5x5,
-    ASTC_RGB_6x6,
-    ASTC_RGB_8x8,
-    ASTC_RGB_10x10,
-    ASTC_RGB_12x12,
-    ASTC_RGBA_4x4,
-    ASTC_RGBA_5x5,
-    ASTC_RGBA_6x6,
-    ASTC_RGBA_8x8,
-    ASTC_RGBA_10x10,
-    ASTC_RGBA_12x12,
+    AstcRgb4x4,
+    AstcRgb5x5,
+    AstcRgb6x6,
+    AstcRgb8x8,
+    AstcRgb10x10,
+    AstcRgb12x12,
+    AstcRgba4x4,
+    AstcRgba5x5,
+    AstcRgba6x6,
+    AstcRgba8x8,
+    AstcRgba10x10,
+    AstcRgba12x12,
 }
 
 impl TextureFormat {
@@ -129,46 +200,68 @@ impl TextureFormat {
             24 => Ok(TextureFormat::BC6H),
 
             // PowerVR
-            30 => Ok(TextureFormat::PVRTC_RGB2), // PVRTC_2BPP_RGB
-            31 => Ok(TextureFormat::PVRTC_RGBA2), // PVRTC_2BPP_RGBA
-            32 => Ok(TextureFormat::PVRTC_RGB4), // PVRTC_4BPP_RGB
-            33 => Ok(TextureFormat::PVRTC_RGBA4), // PVRTC_4BPP_RGBA
+            30 => Ok(TextureFormat::PvrtcRgb2), // Pvrtc2bppRgb
+            31 => Ok(TextureFormat::PvrtcRgba2), // Pvrtc2bppRgba
+            32 => Ok(TextureFormat::PvrtcRgb4), // Pvrtc4bppRgb
+            33 => Ok(TextureFormat::PvrtcRgba4), // Pvrtc4bppRgba
 
             // Ericsson (Android)
-            34 => Ok(TextureFormat::ETC_RGB4),
-            35 => Ok(TextureFormat::ATC_RGB4),
-            36 => Ok(TextureFormat::ATC_RGBA8),
+            34 => Ok(TextureFormat::EtcRgb4),
+            35 => Ok(TextureFormat::AtcRgb4),
+            36 => Ok(TextureFormat::AtcRgba8),
 
             // Adobe ATF
-            38 => Ok(TextureFormat::ATF_RGB_DXT1),
-            39 => Ok(TextureFormat::ATF_RGBA_JPG),
-            40 => Ok(TextureFormat::ATF_RGB_JPG),
+            38 => Ok(TextureFormat::AtfRgbDxt1),
+            39 => Ok(TextureFormat::AtfRgbaJpg),
+            40 => Ok(TextureFormat::AtfRgbJpg),
 
             // Ericsson
-            41 => Ok(TextureFormat::EAC_R),
-            42 => Ok(TextureFormat::EAC_R_SIGNED),
-            43 => Ok(TextureFormat::EAC_RG),
-            44 => Ok(TextureFormat::EAC_RG_SIGNED),
-            45 => Ok(TextureFormat::ETC2_RGB),
-            46 => Ok(TextureFormat::ETC2_RGBA1),
-            47 => Ok(TextureFormat::ETC2_RGBA8),
+            41 => Ok(TextureFormat::EacR),
+            42 => Ok(TextureFormat::EacRSigned),
+            43 => Ok(TextureFormat::EacRg),
+            44 => Ok(TextureFormat::EacRgSigned),
+            45 => Ok(TextureFormat::Etc2Rgb),
+            46 => Ok(TextureFormat::Etc2Rgba1),
+            47 => Ok(TextureFormat::Etc2Rgba8),
 
             // OpenGL / GLES
-            48 => Ok(TextureFormat::ASTC_RGB_4x4),
-            49 => Ok(TextureFormat::ASTC_RGB_5x5),
-            50 => Ok(TextureFormat::ASTC_RGB_6x6),
-            51 => Ok(TextureFormat::ASTC_RGB_8x8),
-            52 => Ok(TextureFormat::ASTC_RGB_10x10),
-            53 => Ok(TextureFormat::ASTC_RGB_12x12),
-            54 => Ok(TextureFormat::ASTC_RGBA_4x4),
-            55 => Ok(TextureFormat::ASTC_RGBA_5x5),
-            56 => Ok(TextureFormat::ASTC_RGBA_6x6),
-            57 => Ok(TextureFormat::ASTC_RGBA_8x8),
-            58 => Ok(TextureFormat::ASTC_RGBA_10x10),
-            59 => Ok(TextureFormat::ASTC_RGBA_12x12),
+            48 => Ok(TextureFormat::AstcRgb4x4),
+            49 => Ok(TextureFormat::AstcRgb5x5),
+            50 => Ok(TextureFormat::AstcRgb6x6),
+            51 => Ok(TextureFormat::AstcRgb8x8),
+            52 => Ok(TextureFormat::AstcRgb10x10),
+            53 => Ok(TextureFormat::AstcRgb12x12),
+            54 => Ok(TextureFormat::AstcRgba4x4),
+            55 => Ok(TextureFormat::AstcRgba5x5),
+            56 => Ok(TextureFormat::AstcRgba6x6),
+            57 => Ok(TextureFormat::AstcRgba8x8),
+            58 => Ok(TextureFormat::AstcRgba10x10),
+            59 => Ok(TextureFormat::AstcRgba12x12),
             _ => Err(Error::EngineError(
                 format!("Unidentified texture format: {}", n),
             )),
         }
     }
+
+    pub fn pixel_format(&self) -> PixelFormat {
+        match self {
+            &TextureFormat::RGB24 => PixelFormat::RGB,
+            &TextureFormat::ARGB32 => PixelFormat::ARGB,
+            &TextureFormat::RGB565 => PixelFormat::RGB16,
+            &TextureFormat::Alpha8 => PixelFormat::A,
+            &TextureFormat::RGBA4444 => PixelFormat::RGBA4B,
+            &TextureFormat::ARGB4444 => PixelFormat::ARGB4B,
+            _ => PixelFormat::RGBA,
+        }
+    }
+}
+
+pub enum PixelFormat {
+    RGB,
+    RGBA,
+    ARGB,
+    RGB16,
+    A,
+    RGBA4B,
+    ARGB4B,
 }

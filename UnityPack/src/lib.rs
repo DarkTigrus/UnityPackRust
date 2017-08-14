@@ -12,6 +12,8 @@ extern crate lzma_sys;
 extern crate uuid;
 extern crate serde_json;
 extern crate odds;
+extern crate bcndecode;
+extern crate decrunch;
 
 #[macro_use]
 extern crate lazy_static;
@@ -26,7 +28,7 @@ mod enums;
 mod resources;
 pub mod unitypack_c;
 mod extras;
-mod engine;
+pub mod engine;
 
 #[cfg(test)]
 mod tests {
@@ -78,6 +80,8 @@ mod tests {
                     texture.data.len(),
                     texture.texture_format
                 );
+
+                let image_data = texture.to_image().unwrap();
                 
             }
         }

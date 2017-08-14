@@ -9,11 +9,13 @@ use std::error;
 use std::fmt;
 use std::io;
 use std::result;
+use bcndecode;
 
 #[derive(Debug)]
 pub enum Error {
     LZ4DecompressionError(Box<error::Error + Send + Sync>),
     LZMADecompressionError(Box<error::Error + Send + Sync>),
+    BCNDecodeError(Box<bcndecode::Error>),
     CompressionNotImplementedError,
     FeatureNotImplementedError,
     DataReadError,
@@ -33,6 +35,7 @@ impl error::Error for Error {
         match self {
             &Error::LZ4DecompressionError(ref err) => err.description(),
             &Error::LZMADecompressionError(ref err) => err.description(),
+            &Error::BCNDecodeError(ref err) => err.description(),
             &Error::CompressionNotImplementedError => {
                 "Requested decompression method is not yet implemented"
             }
@@ -66,6 +69,12 @@ impl From<Error> for io::Error {
 impl From<io::Error> for Error {
     fn from(error: io::Error) -> Error {
         Error::IOError(Box::new(error))
+    }
+}
+
+impl From<bcndecode::Error> for Error {
+    fn from(error: bcndecode::Error) -> Error {
+        Error::BCNDecodeError(Box::new(error))
     }
 }
 
