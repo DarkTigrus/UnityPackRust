@@ -17,6 +17,8 @@ macro_rules! tryGet {
 }
 
 pub mod texture;
+pub mod text;
+pub mod object;
 
 use super::object::ObjectValue;
 use extras::containers::OrderedMap;
@@ -36,7 +38,8 @@ impl EngineObject {
         ordered_map: OrderedMap<String, ObjectValue>,
     ) -> EngineObjectVariant {
         match type_name.as_ref() {
-            "Texture2D" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
+            // implemented engine object types
+            "Texture2D" | "TextAsset" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
             _ => EngineObjectVariant::NotImplemented(ordered_map),
         }
     }

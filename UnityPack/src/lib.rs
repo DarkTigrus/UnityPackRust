@@ -11,7 +11,6 @@ extern crate lzma;
 extern crate lzma_sys;
 extern crate uuid;
 extern crate serde_json;
-extern crate odds;
 extern crate bcndecode;
 extern crate decrunch;
 
@@ -35,11 +34,11 @@ mod tests {
 
     use assetbundle::*;
     use object::*;
-    use engine::texture::Texture2D;
-    use engine::texture::IntoTexture2D;
+    use engine::texture::{Texture2D, IntoTexture2D};
+    use engine::text::IntoTextAsset;
 
     #[test]
-    fn test_load_assetbundle() {
+    fn test_load_texture2d() {
         let input_file = "test_data/main_dxt1_bc1.unity3d";
 
         let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
@@ -67,8 +66,12 @@ mod tests {
             if type_name == "Texture2D" {
                 let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
                 let texture = match engine_object {
-                    ObjectValue::EngineObject(engine_object) => engine_object.to_texture2d().unwrap(),
-                    _ => {panic!("Invalid engine object");}
+                    ObjectValue::EngineObject(engine_object) => {
+                        engine_object.to_texture2d().unwrap()
+                    }
+                    _ => {
+                        panic!("Invalid engine object");
+                    }
                 };
 
                 println!(
@@ -82,12 +85,46 @@ mod tests {
                 );
 
                 let image_data = texture.to_image().unwrap();
-                
+
             }
         }
+    }
 
+    #[test]
+    fn test_load_textasset() {
+        let input_file = "/Applications/Hearthstone/Data/OSX/cardxml0.unity3d";
 
+        let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
+            Ok(f) => f,
+            Err(err) => {
+                println!("Failed to load assetbundle from {}", input_file);
+                println!("Error: {:?}", err);
+                assert!(false);
+                return;
+            }
+        };
 
+        assert!(asset_bundle.assets.len() > 0);
+        asset_bundle.resolve_asset(0).unwrap();
+        let asset = &asset_bundle.assets[0];
+        let objects = &asset.objects;
+
+        for (_, ref obj) in objects.iter() {
+            let type_name = obj.get_type(asset, &mut asset_bundle.signature);
+
+            if type_name == "TextAsset" {
+                let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
+                let text = match engine_object {
+                    ObjectValue::EngineObject(engine_object) => {
+                        engine_object.to_textasset().unwrap()
+                    }
+                    _ => {
+                        panic!("Invalid engine object");
+                    }
+                };
+                // println!("{}",text.script); too long
+            }
+        }
 
     }
 

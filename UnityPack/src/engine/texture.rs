@@ -11,6 +11,10 @@ use error::{Error, Result};
 use bcndecode::{BcnDecoderFormat, BcnEncoding, decode};
 use decrunch::CrunchedData;
 
+pub trait IntoTexture2D {
+    fn to_texture2d(self) -> Result<Texture2D>;
+}
+
 pub struct Texture2D {
     pub height: u32,
     pub width: u32,
@@ -64,7 +68,6 @@ impl Texture2D {
             }
         };
         
-
         // decrunch if needed
         let input_data = match self.texture_format {
             TextureFormat::DXT1Crunched | TextureFormat::DXT5Crunched => {
@@ -98,10 +101,6 @@ impl IntoTexture2D for EngineObject {
             )?,
         })
     }
-}
-
-pub trait IntoTexture2D {
-    fn to_texture2d(self) -> Result<Texture2D>;
 }
 
 #[derive(Debug)]
