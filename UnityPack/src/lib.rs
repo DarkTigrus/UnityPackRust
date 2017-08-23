@@ -17,10 +17,10 @@ extern crate decrunch;
 #[macro_use]
 extern crate lazy_static;
 
-mod error;
+pub mod error;
 pub mod assetbundle;
 pub mod asset;
-mod object;
+pub mod object;
 mod binaryreader;
 mod typetree;
 mod enums;
