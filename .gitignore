@@ -3,3 +3,4 @@ target/
 UnityPack/Cargo.lock
 UnityPackExample/build
 
+.DS_Store
