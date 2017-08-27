@@ -6,6 +6,7 @@
  */
 
 use std::collections::HashMap;
+use std::collections::hash_map::Keys;
 use std::hash::Hash;
 
 /// A HashMap which remembers its insertion order.
@@ -53,5 +54,9 @@ where
 
     pub fn get(&self, k: &K) -> Option<&V> {
         self.items.get(k)
+    }
+
+    pub fn keys(&self) -> Keys<K, V> {
+        self.items.keys()
     }
 }

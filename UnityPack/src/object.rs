@@ -82,21 +82,77 @@ impl ObjectInfo {
         return asset.read_id(buffer);
     }
 
-    pub fn get_type(&self, asset: &Asset, signature: &mut Signature) -> String {
+    pub fn get_type<R: Read + Seek + Teller>(&self, asset: &mut Asset, buffer: &mut R) -> String {
         if self.type_id > 0 {
             return match get_unity_class(&self.type_id) {
                 Ok(type_str) => type_str,
                 Err(_) => format!("<Unknown {}>", self.type_id),
             };
         } else if !asset.typenames.contains_key(&self.type_id) {
-            let rawdata = match self.read(asset, signature) {
+            let rawdata = match self.read(asset, buffer) {
                 Ok(object_value) => object_value,
                 Err(_) => {
                     return format!("<Unknown {}>", self.type_id);
                 }
             };
-            // TODO: script type names
-            // let script = rawdata["m_Script"]
+            let typename = match rawdata {
+                ObjectValue::Map(map) => {
+                    match map.get(&"m_Script".to_string()) {
+                        Some(script) => {
+                            match script {
+                                &ObjectValue::None => {
+                                    match &asset.tree {
+                                        &Some(ref tree) => {
+                                            match tree.type_trees.get(&self.type_id) {
+                                                Some(t_type) => t_type.type_name.clone(),
+                                                None => format!("{}", self.type_id),
+                                            }
+                                        }
+                                        _ => format!("{}", self.type_id),
+                                    }
+                                }
+                                &ObjectValue::ObjectPointer(ref pointer) => {
+                                    let script_obj =
+                                        match asset.objects[&pointer.path_id].read(asset, buffer) {
+                                            Ok(script_obj) => script_obj,
+                                            Err(_) => {
+                                                return format!("<Unknown {}>", self.type_id);
+                                            }
+                                        };
+                                    match script_obj {
+                                        ObjectValue::Map(script_map) => {
+                                            match script_map.get(&"m_ClassName".to_string()) {
+                                                Some(class_name) => {
+                                                    match class_name {
+                                                        &ObjectValue::String(ref s) => s.clone(),
+                                                        _ => format!("<Unknown {}>", self.type_id),
+                                                    }
+                                                }
+                                                None => format!("<Unknown {}>", self.type_id),
+                                            }
+                                        }
+                                        _ => pointer.type_name.clone(),
+                                    }
+                                }
+                                _ => format!("<Unknown {}>", self.type_id),
+                            }
+                        }
+                        _ => {
+                            match &asset.tree {
+                                &Some(ref tree) => {
+                                    match tree.type_trees.get(&self.type_id) {
+                                        Some(t_type) => t_type.type_name.clone(),
+                                        None => format!("{}", self.type_id),
+                                    }
+                                }
+                                _ => format!("{}", self.type_id),
+                            }
+                        }
+                    }
+                }
+                _ => format!("<Unknown {}>", self.type_id),
+            };
+            asset.typenames.insert(self.type_id, typename);
         }
         asset.typenames.get(&self.type_id).unwrap().clone()
     }
@@ -127,26 +183,7 @@ impl ObjectInfo {
         asset.types[&self.type_id].clone()
     }
 
-    pub fn read(&self, asset: &Asset, signature: &mut Signature) -> Result<ObjectValue> {
-        match signature {
-            &mut Signature::UnityFS(ref mut buf) => {
-                return self.read_value(asset, buf);
-            }
-            &mut Signature::UnityRaw(ref mut buf) => {
-                return self.read_value(asset, buf);
-            }
-            &mut Signature::UnityRawCompressed(ref mut buf) => {
-                return self.read_value(asset, &mut BufReader::new(Cursor::new(buf.as_slice())));
-            }
-            _ => return Err(Error::InvalidSignatureError),
-        }
-    }
-
-    fn read_value<R: Read + Seek + Teller>(
-        &self,
-        asset: &Asset,
-        buffer: &mut R,
-    ) -> Result<ObjectValue> {
+    fn read<R: Read + Seek + Teller>(&self, asset: &Asset, buffer: &mut R) -> Result<ObjectValue> {
         let _ = buffer.seek(SeekFrom::Start(
             asset.bundle_offset as u64 + self.data_offset as u64,
         ));
@@ -212,12 +249,18 @@ impl ObjectInfo {
             if t.contains("PPtr<") {
                 let mut object_pointer = ObjectPointer::new(&typetree.type_name);
                 result = match object_pointer.load(asset, buffer) {
-                    Ok(_) => ObjectValue::ObjectPointer(object_pointer),
+                    Ok(_) => {
+                        if object_pointer.is_valid() {
+                            ObjectValue::ObjectPointer(object_pointer)
+                        } else {
+                            ObjectValue::None
+                        }
+                    }
                     _ => ObjectValue::None,
                 };
             } else if first_child.is_array {
                 align = first_child.post_align();
-                let size = try!(buffer.read_i32());
+                let size = try!(buffer.read_u32());
                 let ref array_type = first_child.children[1].type_name;
                 if array_type == "char" || array_type == "UInt8" {
                     let mut data: Vec<u8> = vec![0; size as usize];
@@ -227,8 +270,11 @@ impl ObjectInfo {
                     // we dont know the type
                     let mut array: Vec<ObjectValue> = Vec::with_capacity(size as usize);
                     for _ in 0..size {
-                        let object_value =
-                            try!(self.read_value_from_buffer(asset, typetree, buffer));
+                        let object_value = try!(self.read_value_from_buffer(
+                            asset,
+                            &first_child.children[1],
+                            buffer,
+                        ));
                         array.push(object_value);
                     }
                     result = ObjectValue::Array(array);
@@ -338,21 +384,27 @@ impl ObjectValue {
     pub fn to_bool(&self) -> Result<bool> {
         match self {
             &ObjectValue::Bool(b) => Ok(b),
-            _ => Err(Error::ObjectError("ObjectValue is not bool variant".to_string())),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not bool variant".to_string(),
+            )),
         }
     }
 
     pub fn to_i32(&self) -> Result<i32> {
         match self {
             &ObjectValue::I32(b) => Ok(b),
-            _ => Err(Error::ObjectError("ObjectValue is not i32 variant".to_string())),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not i32 variant".to_string(),
+            )),
         }
     }
 
     pub fn to_string(&self) -> Result<String> {
         match self {
             &ObjectValue::String(ref s) => Ok(s.clone()),
-            _ => Err(Error::ObjectError("ObjectValue is not string variant".to_string())),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not string variant".to_string(),
+            )),
         }
     }
 }
@@ -360,10 +412,10 @@ impl ObjectValue {
 impl ToByteVec<u8> for ObjectValue {
     fn to_byte_vec(&self) -> Result<Vec<u8>> {
         match self {
-            &ObjectValue::U8Array(ref s) => {
-                Ok(s.clone())
-            },
-            _ => Err(Error::ObjectError("ObjectValue is not u8 array variant".to_string())),
+            &ObjectValue::U8Array(ref s) => Ok(s.clone()),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not u8 array variant".to_string(),
+            )),
         }
     }
 }
@@ -402,5 +454,9 @@ impl ObjectPointer {
         self.path_id = try!(asset.read_id(buffer));
 
         Ok(())
+    }
+
+    fn is_valid(&self) -> bool {
+        self.file_id != 0 || self.path_id != 0
     }
 }

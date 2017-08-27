@@ -67,7 +67,7 @@ impl Asset {
         };
 
         {
-            let mut buffer = match &mut bundle.signature {
+            let buffer = match &mut bundle.signature {
                 &mut Signature::UnityFS(ref mut buf) => {
                     asset.bundle_offset = buf.tell();
                     return Ok(asset);
@@ -142,13 +142,15 @@ impl Asset {
 
         match signature {
             &mut Signature::UnityFS(ref mut buf) => {
-                return self.load_from_buffer(buf);
+                self.load_from_buffer(buf)?;
             }
             &mut Signature::UnityRaw(ref mut buf) => {
-                return self.load_from_buffer(buf);
+                self.load_from_buffer(buf)?;
             }
             &mut Signature::UnityRawCompressed(ref mut buf) => {
-                return self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice())));
+                self.load_from_buffer(
+                    &mut BufReader::new(Cursor::new(buf.as_slice())),
+                )?;
             }
             _ => {
                 return Err(Error::AssetError(format!(
@@ -156,7 +158,9 @@ impl Asset {
                     signature
                 )))
             }
-        }
+        };
+
+        Ok(())
     }
 
     fn load_from_buffer<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> Result<()> {
@@ -182,7 +186,7 @@ impl Asset {
 
         let num_objects = buffer.read_u32(&self.endianness)?;
 
-        for _ in 0..num_objects {
+        for i in 0..num_objects {
             if self.format >= 14 {
                 buffer.align();
             }
@@ -217,6 +221,22 @@ impl Asset {
                 "Error while loading Asset, ending string is not empty but {:?}",
                 unk_string
             )));
+        }
+
+        // we need to clone the keys to avoid borrow-checker problems
+        let mut keys: Vec<i64> = Vec::with_capacity(self.objects.keys().len());
+        {
+            let hashed_keys = self.objects.keys();
+            for k in hashed_keys {
+                keys.push(*k);
+            }
+        }
+        for k in keys {
+            let mut obj = self.objects.remove(&k).unwrap();
+            let type_name = obj.get_type(self, buffer);
+            obj.type_name = type_name;
+            self.typenames.insert(obj.type_id, obj.type_name.clone());
+            self.objects.insert(k, obj);
         }
 
         self.is_loaded = true;
@@ -270,6 +290,7 @@ impl Asset {
 
     pub fn read_id<R: Read + Seek + Teller>(&self, buffer: &mut R) -> io::Result<i64> {
         if self.format >= 14 {
+            let k = buffer.tell();
             return buffer.read_i64(&self.endianness);
         }
         let result = buffer.read_i32(&self.endianness)? as i64;
