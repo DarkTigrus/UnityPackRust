@@ -28,7 +28,7 @@ pub struct Asset {
     pub endianness: Endianness,
     pub tree: Option<TypeMetadata>,
     pub types: HashMap<i64, Arc<TypeNode>>,
-    asset_refs: Vec<AssetRef>,
+    pub asset_refs: Vec<AssetOrRef>,
     adds: Vec<(i64, i32)>,
     pub typenames: HashMap<i64, String>,
     // properties
@@ -56,7 +56,7 @@ impl Asset {
             tree: None,
             types: HashMap::new(),
             // when requesting first element it should be the asset itself
-            asset_refs: Vec::new(),
+            asset_refs: vec![AssetOrRef::Asset],
             adds: Vec::new(),
             typenames: HashMap::new(),
             metadata_size: 0,
@@ -186,7 +186,7 @@ impl Asset {
 
         let num_objects = buffer.read_u32(&self.endianness)?;
 
-        for i in 0..num_objects {
+        for _ in 0..num_objects {
             if self.format >= 14 {
                 buffer.align();
             }
@@ -210,7 +210,7 @@ impl Asset {
             let num_refs = buffer.read_u32(&self.endianness)?;
             for _ in 0..num_refs {
                 let asset_ref = AssetRef::new(buffer, &self.endianness)?;
-                self.asset_refs.push(asset_ref);
+                self.asset_refs.push(AssetOrRef::AssetRef(asset_ref));
             }
         }
 
@@ -290,7 +290,6 @@ impl Asset {
 
     pub fn read_id<R: Read + Seek + Teller>(&self, buffer: &mut R) -> io::Result<i64> {
         if self.format >= 14 {
-            let k = buffer.tell();
             return buffer.read_i64(&self.endianness);
         }
         let result = buffer.read_i32(&self.endianness)? as i64;
@@ -298,7 +297,8 @@ impl Asset {
     }
 }
 
-struct AssetRef {
+#[allow(dead_code)]
+pub struct AssetRef {
     asset_path: String,
     guid: Uuid,
     asset_type: i32,
@@ -330,7 +330,7 @@ impl AssetRef {
     }
 }
 
-enum AssetOrRef {
-    Asset(Asset),
+pub enum AssetOrRef {
+    Asset,
     AssetRef(AssetRef),
 }

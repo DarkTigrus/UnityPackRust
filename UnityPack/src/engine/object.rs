@@ -5,7 +5,7 @@
  * All rights reserved 2017
  */
 
-use error::{Error, Result};
+use error::Result;
 use extras::containers::OrderedMap;
 use object::ObjectValue;
 

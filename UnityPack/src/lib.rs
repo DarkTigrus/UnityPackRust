@@ -34,7 +34,7 @@ mod tests {
 
     use assetbundle::*;
     use object::*;
-    use engine::texture::{Texture2D, IntoTexture2D};
+    use engine::texture::IntoTexture2D;
     use engine::text::IntoTextAsset;
 
     #[test]
@@ -52,7 +52,6 @@ mod tests {
         };
 
         assert_eq!(asset_bundle.assets.len(), 1);
-        println!("load asset 1");
         asset_bundle.resolve_asset(0).unwrap();
         let asset = &asset_bundle.assets[0];
 
@@ -61,10 +60,10 @@ mod tests {
         let objects = &asset.objects;
         assert_eq!(objects.len(), 4);
 
-        for (_, ref obj) in objects.iter() {
-            let type_name = obj.get_type(asset, &mut asset_bundle.signature);
-            if type_name == "Texture2D" {
-                let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
+        for obj in objects.values() {
+            if obj.type_name == "Texture2D" {
+                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                    .unwrap();
                 let texture = match engine_object {
                     ObjectValue::EngineObject(engine_object) => {
                         engine_object.to_texture2d().unwrap()
@@ -76,7 +75,7 @@ mod tests {
 
                 println!(
                     "{}: {} ({}x{}) - {} bytes, format: {:?}",
-                    type_name,
+                    obj.type_name,
                     texture.name,
                     texture.width,
                     texture.height,
@@ -84,10 +83,32 @@ mod tests {
                     texture.texture_format
                 );
 
-                let image_data = texture.to_image().unwrap();
+                let _ = texture.to_image().unwrap();
 
             }
         }
+    }
+
+    #[test]
+    fn test_load_gameobjects() {
+        let input_file = "/Applications/Hearthstone/Data/OSX/gameobjects0.unity3d";
+
+        let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
+            Ok(f) => f,
+            Err(err) => {
+                println!("Failed to load assetbundle from {}", input_file);
+                println!("Error: {:?}", err);
+                assert!(false);
+                return;
+            }
+        };
+
+        assert!(asset_bundle.assets.len() > 0);
+
+        for i in 0..asset_bundle.assets.len() {
+            asset_bundle.resolve_asset(i).unwrap();
+        }
+
     }
 
     #[test]
@@ -109,12 +130,11 @@ mod tests {
         let asset = &asset_bundle.assets[0];
         let objects = &asset.objects;
 
-        for (_, ref obj) in objects.iter() {
-            let type_name = obj.get_type(asset, &mut asset_bundle.signature);
-
-            if type_name == "TextAsset" {
-                let engine_object = obj.read(asset, &mut asset_bundle.signature).unwrap();
-                let text = match engine_object {
+        for obj in objects.values() {
+            if obj.type_name == "TextAsset" {
+                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                    .unwrap();
+                let _ = match engine_object {
                     ObjectValue::EngineObject(engine_object) => {
                         engine_object.to_textasset().unwrap()
                     }

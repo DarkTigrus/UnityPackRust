@@ -4,7 +4,7 @@
  *
  * All rights reserved 2017
  */
-use asset::Asset;
+use asset::{Asset, AssetOrRef};
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::io;
 use std::clone::Clone;
@@ -113,7 +113,7 @@ impl ObjectInfo {
                                 }
                                 &ObjectValue::ObjectPointer(ref pointer) => {
                                     let script_obj =
-                                        match asset.objects[&pointer.path_id].read(asset, buffer) {
+                                        match pointer.resolve(asset, buffer) {//asset.objects[&pointer.path_id].read(asset, buffer) {
                                             Ok(script_obj) => script_obj,
                                             Err(_) => {
                                                 return format!("<Unknown {}>", self.type_id);
@@ -196,6 +196,21 @@ impl ObjectInfo {
         let reader = BufReader::new(Cursor::new(object_buf));
         let mut binreader = BinaryReader::new(reader, asset.endianness.clone());
         self.read_value_from_buffer(asset, &typetree, &mut binreader)
+    }
+
+    pub fn read_signature(&self, asset: &Asset, signature: &mut Signature) -> Result<ObjectValue> {
+        match signature {
+            &mut Signature::UnityFS(ref mut buf) => {
+                return self.read(asset, buf);
+            }
+            &mut Signature::UnityRaw(ref mut buf) => {
+                return self.read(asset, buf);
+            }
+            &mut Signature::UnityRawCompressed(ref mut buf) => {
+                return self.read(asset, &mut BufReader::new(Cursor::new(buf.as_slice())));
+            }
+            _ => return Err(Error::InvalidSignatureError),
+        }
     }
 
     fn read_value_from_buffer<R: Read + Seek>(
@@ -458,5 +473,17 @@ impl ObjectPointer {
 
     fn is_valid(&self) -> bool {
         self.file_id != 0 || self.path_id != 0
+    }
+
+    fn resolve<R: Read + Seek + Teller>(&self, asset: &Asset, buffer: &mut R) -> Result<ObjectValue> {
+        let res_asset = match asset.asset_refs[self.file_id as usize] {
+            AssetOrRef::AssetRef(_) => {
+                //asset_ref.resolve()
+                // asset references are not yet implemented
+                return Ok(ObjectValue::None);
+            }
+            AssetOrRef::Asset => asset,
+        };
+        res_asset.objects[&self.path_id].read(asset, buffer)
     }
 }
