@@ -10,7 +10,8 @@ use std::collections::hash_map::Keys;
 use std::hash::Hash;
 
 /// A HashMap which remembers its insertion order.
-pub struct OrderedMap<K, V> {
+#[derive(Debug)]
+pub struct OrderedMap<K: Hash + Eq, V> {
     items: HashMap<K, V>,
     indices: HashMap<usize, K>,
 }
@@ -36,7 +37,6 @@ where
     ///
     /// [`None`]: ../../std/option/enum.Option.html#variant.None
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
-
         if self.items.contains_key(&k) {
             return self.items.insert(k, v);
         }

@@ -13,7 +13,7 @@ use resources::default_type_metadata;
 use binaryreader::*;
 use object::ObjectInfo;
 use std::collections::HashMap;
-use std::io::{Cursor, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::io;
 use lzma;
 use uuid::Uuid;
@@ -41,7 +41,6 @@ pub struct Asset {
 
 impl Asset {
     pub fn new(bundle: &mut AssetBundle) -> Result<Asset> {
-
         let is_compressed = bundle.is_compressed();
         let ref descriptor = bundle.descriptor;
 
@@ -72,8 +71,9 @@ impl Asset {
                     asset.bundle_offset = buf.tell();
                     return Ok(asset);
                 }
-                &mut Signature::UnityWeb(ref mut buf) |
-                &mut Signature::UnityRaw(ref mut buf) => buf,
+                &mut Signature::UnityWeb(ref mut buf) | &mut Signature::UnityRaw(ref mut buf) => {
+                    buf
+                }
                 _ => {
                     return Err(Error::InvalidSignatureError);
                 }
@@ -107,7 +107,6 @@ impl Asset {
                 };
                 asset.bundle_offset = 0;
                 try!(buffer.seek(SeekFrom::Start(ofs))); // restore pointer
-
             } else {
                 asset.bundle_offset = offset + header_size as u64 - 4;
                 if asset.is_resource() {
@@ -148,9 +147,7 @@ impl Asset {
                 self.load_from_buffer(buf)?;
             }
             &mut Signature::UnityRawCompressed(ref mut buf) => {
-                self.load_from_buffer(
-                    &mut BufReader::new(Cursor::new(buf.as_slice())),
-                )?;
+                self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice())))?;
             }
             _ => {
                 return Err(Error::AssetError(format!(
@@ -206,8 +203,8 @@ impl Asset {
             }
         }
 
+        let num_refs = buffer.read_u32(&self.endianness)?;
         if self.format >= 6 {
-            let num_refs = buffer.read_u32(&self.endianness)?;
             for _ in 0..num_refs {
                 let asset_ref = AssetRef::new(buffer, &self.endianness)?;
                 self.asset_refs.push(AssetOrRef::AssetRef(asset_ref));
@@ -295,6 +292,13 @@ impl Asset {
         let result = buffer.read_i32(&self.endianness)? as i64;
         return Ok(result);
     }
+
+    pub fn get_file_by_id(&self, id: &i32) -> Result<String> {
+        match &self.asset_refs[*id as usize] {
+            &AssetOrRef::Asset => Ok(self.name.clone()),
+            &AssetOrRef::AssetRef(ref a_ref) => Ok(a_ref.file_path.clone()),
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -302,7 +306,7 @@ pub struct AssetRef {
     asset_path: String,
     guid: Uuid,
     asset_type: i32,
-    file_path: String,
+    pub file_path: String,
     // probably want to add a reference to the calling Asset itself
 }
 

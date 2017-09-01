@@ -19,12 +19,14 @@ macro_rules! tryGet {
 pub mod texture;
 pub mod text;
 pub mod object;
+pub mod font;
 
 use super::object::ObjectValue;
 use extras::containers::OrderedMap;
 
+#[derive(Debug)]
 pub struct EngineObject {
-    map: OrderedMap<String, ObjectValue>,
+    pub map: OrderedMap<String, ObjectValue>,
 }
 
 pub enum EngineObjectVariant {
@@ -39,7 +41,9 @@ impl EngineObject {
     ) -> EngineObjectVariant {
         match type_name.as_ref() {
             // implemented engine object types
-            "Texture2D" | "TextAsset" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
+            "Texture2D" | "TextAsset" | "FontDef" | "MonoBehaviour" => {
+                EngineObjectVariant::EngineObject(EngineObject { map: ordered_map })
+            }
             _ => EngineObjectVariant::NotImplemented(ordered_map),
         }
     }

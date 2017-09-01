@@ -18,6 +18,7 @@ pub enum Error {
     BCNDecodeError(Box<bcndecode::Error>),
     CompressionNotImplementedError,
     FeatureNotImplementedError,
+    ValueNotFoundError,
     DataReadError,
     CustomError(String),
     InvalidSignatureError,
@@ -39,6 +40,7 @@ impl error::Error for Error {
             &Error::CompressionNotImplementedError => {
                 "Requested decompression method is not yet implemented"
             }
+            &Error::ValueNotFoundError => "Requested value was not found",
             &Error::DataReadError => "Failed to read stream data",
             &Error::FeatureNotImplementedError => "Requested feature is not yet implemented",
             &Error::InvalidSignatureError => "Signature is invalid",
