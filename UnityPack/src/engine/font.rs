@@ -16,13 +16,13 @@ pub trait IntoFontAsset {
 }
 
 pub struct FontAsset {
-    line_space_modifier: f32,
-    font_size_modifier: f32,
-    font: AssetPointer,
-    outline_modifier: f32,
-    single_line_adjustment: f32,
-    character_size_modifier: f32,
-    unbound_character_size_modifier: f32,
+    pub line_space_modifier: f32,
+    pub font_size_modifier: f32,
+    pub font: AssetPointer,
+    pub outline_modifier: f32,
+    pub single_line_adjustment: f32,
+    pub character_size_modifier: f32,
+    pub unbound_character_size_modifier: f32,
 }
 
 impl IntoFontAsset for EngineObject {
