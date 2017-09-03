@@ -11,6 +11,7 @@ use object::AssetPointer;
 use object::ObjectValue::ObjectPointer;
 use asset::Asset;
 use engine::object::Object;
+use object::ToByteVec;
 
 pub trait IntoFontDef {
     fn to_fontdef(self, asset: &Asset) -> Result<FontDef>;
@@ -66,6 +67,7 @@ pub struct Font {
     pub kerning: Option<f32>,
     pub line_spacing: f32,
     pub pixel_scale: f32,
+    pub data: Vec<u8>,
 }
 
 impl IntoFont for EngineObject {
@@ -84,6 +86,7 @@ impl IntoFont for EngineObject {
             },
             line_spacing: tryGet!(self.map, "m_LineSpacing").to_f32()?,
             pixel_scale: tryGet!(self.map, "m_PixelScale").to_f32()?,
+            data: tryGet!(self.map, "m_FontData").to_byte_vec()?,
         })
     }
 }
