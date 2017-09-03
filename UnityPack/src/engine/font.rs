@@ -10,12 +10,13 @@ use super::EngineObject;
 use object::AssetPointer;
 use object::ObjectValue::ObjectPointer;
 use asset::Asset;
+use engine::object::Object;
 
-pub trait IntoFontAsset {
-    fn to_fontasset(self, asset: &Asset) -> Result<FontAsset>;
+pub trait IntoFontDef {
+    fn to_fontdef(self, asset: &Asset) -> Result<FontDef>;
 }
 
-pub struct FontAsset {
+pub struct FontDef {
     pub line_space_modifier: f32,
     pub font_size_modifier: f32,
     pub font: AssetPointer,
@@ -25,10 +26,10 @@ pub struct FontAsset {
     pub unbound_character_size_modifier: f32,
 }
 
-impl IntoFontAsset for EngineObject {
-    fn to_fontasset(self, asset: &Asset) -> Result<FontAsset> {
-        Ok(FontAsset {
-            line_space_modifier: tryGet!(self.map, "m_LineSpaceModifier".to_string()).to_f32()?,
+impl IntoFontDef for EngineObject {
+    fn to_fontdef(self, asset: &Asset) -> Result<FontDef> {
+        Ok(FontDef {
+            line_space_modifier: tryGet!(self.map, "m_LineSpaceModifier").to_f32()?,
             font_size_modifier: tryGet!(self.map, "m_FontSizeModifier").to_f32()?,
             font: {
                 match tryGet!(self.map, "m_Font") {
@@ -48,6 +49,41 @@ impl IntoFontAsset for EngineObject {
             character_size_modifier: tryGet!(self.map, "m_CharacterSizeModifier").to_f32()?,
             unbound_character_size_modifier: tryGet!(self.map, "m_UnboundCharacterSizeModifier")
                 .to_f32()?,
+        })
+    }
+}
+
+pub trait IntoFont {
+    fn to_font(self) -> Result<Font>;
+}
+
+pub struct Font {
+    pub object: Object,
+    pub ascent: f32,
+    pub character_padding: i32,
+    pub character_spacing: i32,
+    pub font_size: f32,
+    pub kerning: Option<f32>,
+    pub line_spacing: f32,
+    pub pixel_scale: f32,
+}
+
+impl IntoFont for EngineObject {
+    fn to_font(self) -> Result<Font> {
+        Ok(Font {
+            object: Object::new(&self.map)?,
+            ascent: tryGet!(self.map, "m_Ascent").to_f32()?,
+            character_padding: tryGet!(self.map, "m_CharacterPadding").to_i32()?,
+            character_spacing: tryGet!(self.map, "m_CharacterSpacing").to_i32()?,
+            font_size: tryGet!(self.map, "m_FontSize").to_f32()?,
+            kerning: {
+                match self.map.get(&"m_Kerning".to_string()) {
+                    Some(k) => Some(k.to_f32()?),
+                    None => None,
+                }
+            },
+            line_spacing: tryGet!(self.map, "m_LineSpacing").to_f32()?,
+            pixel_scale: tryGet!(self.map, "m_PixelScale").to_f32()?,
         })
     }
 }

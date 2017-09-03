@@ -37,7 +37,8 @@ mod tests {
     use object::*;
     use engine::texture::IntoTexture2D;
     use engine::text::IntoTextAsset;
-    use engine::font::IntoFontAsset;
+    use engine::font::IntoFontDef;
+    use engine::font::IntoFont;
 
     #[test]
     fn test_load_texture2d() {
@@ -174,8 +175,43 @@ mod tests {
 
                 let _ = match engine_object {
                     ObjectValue::EngineObject(engine_object) => {
-                        engine_object.to_fontasset(&asset).unwrap()
+                        engine_object.to_fontdef(&asset).unwrap()
                     }
+                    _ => {
+                        panic!("Invalid engine object: {:?}", engine_object);
+                    }
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_load_font() {
+        let input_file = "/Applications/Hearthstone/Data/OSX/shared1.unity3d";
+
+        let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
+            Ok(f) => f,
+            Err(err) => {
+                println!("Failed to load assetbundle from {}", input_file);
+                println!("Error: {:?}", err);
+                assert!(false);
+                return;
+            }
+        };
+
+        assert!(asset_bundle.assets.len() > 0);
+        asset_bundle.resolve_asset(0).unwrap();
+
+        let asset = &asset_bundle.assets[0];
+        let objects = &asset.objects;
+
+        for obj in objects.values() {
+            if obj.type_name == "Font" {
+                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                    .unwrap();
+
+                let _ = match engine_object {
+                    ObjectValue::EngineObject(engine_object) => engine_object.to_font().unwrap(),
                     _ => {
                         panic!("Invalid engine object: {:?}", engine_object);
                     }
