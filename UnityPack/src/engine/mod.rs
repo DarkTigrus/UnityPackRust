@@ -41,7 +41,7 @@ impl EngineObject {
     ) -> EngineObjectVariant {
         match type_name.as_ref() {
             // implemented engine object types
-            "Texture2D" | "TextAsset" | "FontDef" | "Font" | "MonoBehaviour" => {
+            "Texture2D" | "TextAsset" | "FontDef" | "Font" | "MonoBehaviour" | "AssetBundle" => {
                 EngineObjectVariant::EngineObject(EngineObject { map: ordered_map })
             }
             _ => EngineObjectVariant::NotImplemented(ordered_map),
