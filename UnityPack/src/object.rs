@@ -385,11 +385,29 @@ impl ObjectValue {
         }
     }
 
+    pub fn to_u16(&self) -> Result<u16> {
+        match self {
+            &ObjectValue::U16(b) => Ok(b),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not u16 variant".to_string(),
+            )),
+        }
+    }
+
     pub fn to_i32(&self) -> Result<i32> {
         match self {
             &ObjectValue::I32(b) => Ok(b),
             _ => Err(Error::ObjectError(
                 "ObjectValue is not i32 variant".to_string(),
+            )),
+        }
+    }
+
+    pub fn to_u32(&self) -> Result<u32> {
+        match self {
+            &ObjectValue::U32(b) => Ok(b),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not u32 variant".to_string(),
             )),
         }
     }
@@ -408,6 +426,24 @@ impl ObjectValue {
             &ObjectValue::String(ref s) => Ok(s.clone()),
             _ => Err(Error::ObjectError(
                 "ObjectValue is not string variant".to_string(),
+            )),
+        }
+    }
+
+    pub fn into_vec(self) -> Result<Vec<ObjectValue>> {
+        match self {
+            ObjectValue::Array(v) => Ok(v),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not vec variant".to_string(),
+            )),
+        }
+    }
+
+    pub fn into_pair(self) -> Result<(Box<ObjectValue>, Box<ObjectValue>)> {
+        match self {
+            ObjectValue::Pair(p) => Ok(p),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not pair variant".to_string(),
             )),
         }
     }

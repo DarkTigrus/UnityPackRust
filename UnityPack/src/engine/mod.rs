@@ -16,6 +16,17 @@ macro_rules! tryGet {
     };
 }
 
+macro_rules! tryConsume {
+    ($map: expr, $key: expr) => {
+        match $map.remove(&String::from($key)) {
+            Some(item) => item,
+            None => {
+                return Err(Error::EngineError(format!("Item not found for key {}",$key)));
+            }
+        }
+    };
+}
+
 pub mod texture;
 pub mod text;
 pub mod object;
@@ -41,9 +52,13 @@ impl EngineObject {
     ) -> EngineObjectVariant {
         match type_name.as_ref() {
             // implemented engine object types
-            "Texture2D" | "TextAsset" | "FontDef" | "Font" | "MonoBehaviour" | "AssetBundle" => {
-                EngineObjectVariant::EngineObject(EngineObject { map: ordered_map })
-            }
+            "Texture2D" |
+            "TextAsset" |
+            "FontDef" |
+            "Font" |
+            "MonoBehaviour" |
+            "AssetBundle" |
+            "GameObject" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
             _ => EngineObjectVariant::NotImplemented(ordered_map),
         }
     }
