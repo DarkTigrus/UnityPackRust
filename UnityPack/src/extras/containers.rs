@@ -59,4 +59,21 @@ where
     pub fn keys(&self) -> Keys<K, V> {
         self.items.keys()
     }
+
+    pub fn remove(&mut self, k: &K) -> Option<V> {
+        let mut remove_idx: usize = 0;
+        let mut idx_found = false;
+        for (i, ik) in &self.indices {
+            if ik == k {
+                remove_idx = *i;
+                idx_found = true;
+                break;
+            }
+        }
+        if idx_found {
+            self.indices.remove(&remove_idx);
+        }
+
+        self.items.remove(k)
+    }
 }
