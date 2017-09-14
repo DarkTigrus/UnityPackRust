@@ -385,6 +385,15 @@ impl ObjectValue {
         }
     }
 
+    pub fn to_u8(&self) -> Result<u8> {
+        match self {
+            &ObjectValue::U8(b) => Ok(b),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not u8 variant".to_string(),
+            )),
+        }
+    }
+
     pub fn to_u16(&self) -> Result<u16> {
         match self {
             &ObjectValue::U16(b) => Ok(b),
@@ -426,6 +435,15 @@ impl ObjectValue {
             &ObjectValue::String(ref s) => Ok(s.clone()),
             _ => Err(Error::ObjectError(
                 "ObjectValue is not string variant".to_string(),
+            )),
+        }
+    }
+
+    pub fn into_map(self) -> Result<OrderedMap<String, ObjectValue>> {
+        match self {
+            ObjectValue::Map(s) => Ok(s),
+            _ => Err(Error::ObjectError(
+                "ObjectValue is not map variant".to_string(),
             )),
         }
     }

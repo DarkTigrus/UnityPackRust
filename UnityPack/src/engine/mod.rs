@@ -31,6 +31,7 @@ pub mod texture;
 pub mod text;
 pub mod object;
 pub mod font;
+pub mod mesh;
 
 use super::object::ObjectValue;
 use extras::containers::OrderedMap;
@@ -58,7 +59,8 @@ impl EngineObject {
             "Font" |
             "MonoBehaviour" |
             "AssetBundle" |
-            "GameObject" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
+            "GameObject" |
+            "Mesh" => EngineObjectVariant::EngineObject(EngineObject { map: ordered_map }),
             _ => EngineObjectVariant::NotImplemented(ordered_map),
         }
     }

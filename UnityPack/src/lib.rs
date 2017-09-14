@@ -39,6 +39,7 @@ mod tests {
     use engine::text::IntoTextAsset;
     use engine::font::IntoFontDef;
     use engine::font::IntoFont;
+    use engine::mesh::IntoMesh;
 
     #[test]
     fn test_load_texture2d() {
@@ -212,6 +213,41 @@ mod tests {
 
                 let _ = match engine_object {
                     ObjectValue::EngineObject(engine_object) => engine_object.to_font().unwrap(),
+                    _ => {
+                        panic!("Invalid engine object: {:?}", engine_object);
+                    }
+                };
+            }
+        }
+    }
+
+    #[test]
+    fn test_load_mesh() {
+        let input_file = "/Applications/Hearthstone/Data/OSX/actors0.unity3d";
+
+        let mut asset_bundle = match AssetBundle::load_from_file(input_file) {
+            Ok(f) => f,
+            Err(err) => {
+                println!("Failed to load assetbundle from {}", input_file);
+                println!("Error: {:?}", err);
+                assert!(false);
+                return;
+            }
+        };
+
+        assert!(asset_bundle.assets.len() > 0);
+        asset_bundle.resolve_asset(0).unwrap();
+
+        let asset = &asset_bundle.assets[0];
+        let objects = &asset.objects;
+
+        for obj in objects.values() {
+            if obj.type_name == "Mesh" {
+                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                    .unwrap();
+
+                let _ = match engine_object {
+                    ObjectValue::EngineObject(engine_object) => engine_object.to_mesh().unwrap(),
                     _ => {
                         panic!("Invalid engine object: {:?}", engine_object);
                     }
