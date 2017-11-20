@@ -51,8 +51,8 @@ impl SubMesh {
 
 pub struct VertexData {
     pub object: Object,
-    pub channels: Vec<OrderedMap<String, ObjectValue>>, //field("m_Channels")
-    pub current_channels: u32,
+    pub channels: Vec<OrderedMap<String, ObjectValue>>,
+    pub current_channels: i32,
     pub data: Vec<u8>,
     pub vertex_count: u32,
 }
@@ -61,7 +61,7 @@ impl VertexData {
     fn from_map(map: &mut OrderedMap<String, ObjectValue>) -> Result<Self> {
         Ok(Self {
             object: Object::new(map)?,
-            current_channels: tryGet!(map, "m_CurrentChannels").to_u32()?,
+            current_channels: tryGet!(map, "m_CurrentChannels").to_i32()?,
             vertex_count: tryGet!(map, "m_VertexCount").to_u32()?,
             data: tryGet!(map, "m_DataSize").to_byte_vec()?,
             channels: {
