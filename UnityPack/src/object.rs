@@ -380,7 +380,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::Bool(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not bool variant".to_string(),
+                format!("ObjectValue is not bool variant but {:?}", self)
             )),
         }
     }
@@ -389,7 +389,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::U8(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not u8 variant".to_string(),
+                format!("ObjectValue is not u8 variant but {:?}", self)
             )),
         }
     }
@@ -398,7 +398,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::U16(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not u16 variant".to_string(),
+                format!("ObjectValue is not u16 variant but {:?}", self)
             )),
         }
     }
@@ -407,7 +407,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::I32(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not i32 variant".to_string(),
+                format!("ObjectValue is not i32 variant but {:?}", self)
             )),
         }
     }
@@ -416,7 +416,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::U32(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not u32 variant".to_string(),
+                format!("ObjectValue is not u32 variant but {:?}", self)
             )),
         }
     }
@@ -425,7 +425,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::Float(b) => Ok(b),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not f32 variant".to_string(),
+                format!("ObjectValue is not f32 variant but {:?}", self)
             )),
         }
     }
@@ -434,7 +434,7 @@ impl ObjectValue {
         match self {
             &ObjectValue::String(ref s) => Ok(s.clone()),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not string variant".to_string(),
+                format!("ObjectValue is not string variant but {:?}", self)
             )),
         }
     }
@@ -443,7 +443,7 @@ impl ObjectValue {
         match self {
             ObjectValue::Map(s) => Ok(s),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not map variant".to_string(),
+                format!("ObjectValue is not map variant but {:?}", self)
             )),
         }
     }
@@ -452,7 +452,7 @@ impl ObjectValue {
         match self {
             ObjectValue::Array(v) => Ok(v),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not vec variant".to_string(),
+                format!("ObjectValue is not vec variant but {:?}", self)
             )),
         }
     }
@@ -461,7 +461,7 @@ impl ObjectValue {
         match self {
             ObjectValue::Pair(p) => Ok(p),
             _ => Err(Error::ObjectError(
-                "ObjectValue is not pair variant".to_string(),
+                format!("ObjectValue is not pair variant but {:?}", self)
             )),
         }
     }
