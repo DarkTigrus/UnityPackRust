@@ -478,7 +478,7 @@ impl ToByteVec<u8> for ObjectValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ObjectPointer {
     pub type_name: String,
     pub file_id: i32,
