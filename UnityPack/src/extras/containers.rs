@@ -8,12 +8,29 @@
 use std::collections::HashMap;
 use std::collections::hash_map::Keys;
 use std::hash::Hash;
+use std::fmt;
 
 /// A HashMap which remembers its insertion order.
-#[derive(Debug)]
 pub struct OrderedMap<K: Hash + Eq, V> {
     items: HashMap<K, V>,
     indices: HashMap<usize, K>,
+}
+
+impl<K: Hash + Eq + fmt::Debug, V: fmt::Debug> fmt::Debug for OrderedMap<K, V> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut content = String::new();
+        for i in 0..self.items.len() {
+            let key = self.indices.get(&i).unwrap();
+            content.push_str(&format!("{:?}: ", key));
+            let v = self.items.get(&key).unwrap();
+            if i == self.items.len() - 1 {
+                content.push_str(&format!("{:?}", v));
+            } else {
+                content.push_str(&format!("{:?}, ", v));
+            }
+        }
+        write!(f, "{{ {} }}", content)
+    }
 }
 
 impl<K, V> OrderedMap<K, V>
@@ -48,6 +65,7 @@ where
         None
     }
 
+    /// Returns the number of key-value pairs in this map
     pub fn len(&self) -> usize {
         self.items.len()
     }
