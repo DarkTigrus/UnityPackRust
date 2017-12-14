@@ -10,6 +10,7 @@ use extras::containers::OrderedMap;
 use object::ObjectValue;
 use super::EngineObject;
 
+#[derive(Debug)]
 pub struct Object {
     pub name: String,
 }
@@ -32,6 +33,7 @@ impl Object {
     }
 }
 
+#[derive(Debug)]
 pub struct GameObject {
     pub object: Object,
     pub is_active: bool,

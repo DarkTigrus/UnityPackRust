@@ -16,6 +16,7 @@ pub trait IntoMesh {
     fn to_mesh(self) -> Result<Mesh>;
 }
 
+#[derive(Debug)]
 pub struct Mesh {
     pub object: Object,
     pub root_bone_name_hash: u32,
@@ -27,6 +28,7 @@ pub struct Mesh {
     pub vertex_data: VertexData,
 }
 
+#[derive(Debug)]
 pub struct SubMesh {
     pub first_byte: u32,
     pub first_vertex: u32,
@@ -49,6 +51,7 @@ impl SubMesh {
     }
 }
 
+#[derive(Debug)]
 pub struct VertexData {
     pub object: Object,
     pub channels: Vec<OrderedMap<String, ObjectValue>>,
