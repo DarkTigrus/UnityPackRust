@@ -58,6 +58,7 @@ pub trait IntoFont {
     fn to_font(self) -> Result<Font>;
 }
 
+#[derive(Debug)]
 pub struct Font {
     pub object: Object,
     pub ascent: f32,
