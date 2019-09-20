@@ -12,9 +12,11 @@ use error::{Error, Result};
 use extras::containers::OrderedMap;
 use resources::{default_type_metadata, get_unity_class};
 use std::clone::Clone;
+use std::ffi::OsString;
 use std::fmt;
 use std::io;
 use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+use std::os::unix::ffi::OsStringExt;
 use std::sync::Arc;
 use typetree::{TypeNode, DEFAULT_TYPENODE};
 
@@ -133,7 +135,10 @@ impl ObjectInfo {
                         ObjectValue::Map(script_map) => {
                             match script_map.get(&"m_ClassName".to_string()) {
                                 Some(class_name) => match class_name {
-                                    ObjectValue::String(ref s) => s.clone(),
+                                    ObjectValue::String(ref s) => s
+                                        .to_owned()
+                                        .into_string()
+                                        .expect("script is not plain text"),
                                     _ => format!("<Unknown {}>", self.type_id),
                                 },
                                 None => format!("<Unknown {}>", self.type_id),
@@ -233,7 +238,8 @@ impl ObjectInfo {
             result = ObjectValue::Float(try!(buffer.read_f32()));
         } else if t == "string" {
             let size = try!(buffer.read_u32());
-            result = ObjectValue::String(try!(buffer.read_string_sized(size as usize)));
+            result =
+                ObjectValue::String(OsString::from_vec(try!(buffer.read_bytes(size as usize))));
             align = typetree.children[0].post_align();
         } else {
             let first_child: &TypeNode = if typetree.is_array {
@@ -352,7 +358,7 @@ pub enum ObjectValue {
     U64(u64),
     I64(i64),
     Float(f32),
-    String(String),
+    String(OsString),
     ObjectPointer(ObjectPointer),
     U8Array(Vec<u8>),
     Array(Vec<ObjectValue>),
@@ -428,6 +434,18 @@ impl ObjectValue {
     }
 
     pub fn to_string(&self) -> Result<String> {
+        match self {
+            ObjectValue::String(ref s) => {
+                Ok(s.clone().into_string().expect("String is not valid utf-8"))
+            }
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not string variant but {:?}",
+                self
+            ))),
+        }
+    }
+
+    pub fn to_osstring(&self) -> Result<OsString> {
         match self {
             ObjectValue::String(ref s) => Ok(s.clone()),
             _ => Err(Error::ObjectError(format!(
