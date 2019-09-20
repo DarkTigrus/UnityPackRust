@@ -4,11 +4,11 @@
  *
  * All rights reserved 2017
  */
-use lzma_sys::*;
+use byteorder::{LittleEndian, ReadBytesExt};
 use error::{Error, Result};
-use byteorder::{ReadBytesExt, LittleEndian};
-use std::mem;
 use libc;
+use lzma_sys::*;
+use std::mem;
 
 pub fn decompress_raw(mut compressed_data: &[u8], decompressed_size: usize) -> Result<Vec<u8>> {
     // LZMA decompression: Unity does not provide the uncompressed size
@@ -21,14 +21,13 @@ pub fn decompress_raw(mut compressed_data: &[u8], decompressed_size: usize) -> R
     let lp = props % 5;
 
     unsafe {
-
         let mut option: lzma_options_lzma = mem::zeroed();
         lzma_lzma_preset(&mut option as *mut lzma_options_lzma, LZMA_PRESET_DEFAULT);
 
         option.dict_size = dict_size;
-        option.lc = lc as u32;
-        option.lp = lp as u32;
-        option.pb = pb as u32;
+        option.lc = lc.into();
+        option.lp = lp.into();
+        option.pb = pb.into();
 
         let filters = vec![
             lzma_filter {
@@ -65,9 +64,9 @@ fn lzma_check(ret: lzma_ret) -> Result<()> {
         LZMA_UNSUPPORTED_CHECK => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
             "Unsupported integrity check".to_string(),
         )))),
-        LZMA_MEM_ERROR => Err(Error::LZMADecompressionError(
-            Box::new(Error::CustomError("Memory error".to_string())),
-        )),
+        LZMA_MEM_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
+            "Memory error".to_string(),
+        )))),
         LZMA_MEMLIMIT_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
             "Memory usage limit exceeded".to_string(),
         )))),
@@ -77,15 +76,15 @@ fn lzma_check(ret: lzma_ret) -> Result<()> {
         LZMA_OPTIONS_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
             "Invalid or unsupported options".to_string(),
         )))),
-        LZMA_DATA_ERROR => Err(Error::LZMADecompressionError(Box::new(
-            Error::CustomError("Corrupt input data".to_string()),
-        ))),
-        LZMA_BUF_ERROR => Err(Error::LZMADecompressionError(Box::new(
-            Error::CustomError("Insufficient buffer space".to_string()),
-        ))),
-        LZMA_PROG_ERROR => Err(Error::LZMADecompressionError(
-            Box::new(Error::CustomError("Internal error".to_string())),
-        )),
+        LZMA_DATA_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
+            "Corrupt input data".to_string(),
+        )))),
+        LZMA_BUF_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
+            "Insufficient buffer space".to_string(),
+        )))),
+        LZMA_PROG_ERROR => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
+            "Internal error".to_string(),
+        )))),
         _ => Err(Error::LZMADecompressionError(Box::new(Error::CustomError(
             format!("Unrecognized error from liblzma: {}", ret),
         )))),

@@ -105,7 +105,7 @@ pub extern "C" fn unitypack_get_num_objects(asset_ptr: *mut Asset, bundle_ptr: *
 
 #[no_mangle]
 pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_ptr: *mut AssetBundle, obj_type: *const c_char)  -> ObjectArray {
-    
+
     let mut _bundle = unsafe { &mut *bundle_ptr };
 
     let obj_type_str = unsafe { CStr::from_ptr(obj_type).to_str().unwrap() };
@@ -124,7 +124,7 @@ pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_
             },
         };
     }
-    
+
     let mut v: Vec<*const libc::c_void> = Vec::new();
     let mut _asset = unsafe { &mut *asset_ptr };
 
@@ -145,7 +145,7 @@ pub extern "C" fn unitypack_get_objects_with_type(asset_ptr: *mut Asset, bundle_
     };
 
     forget(boxed_slice);
-        
+
     result
 }
 
@@ -154,7 +154,7 @@ pub extern "C" fn unitypack_get_object_type(obj_ptr: *mut ObjectInfo, asset_ptr:
     let mut _object = unsafe { &mut *obj_ptr };
     let mut _asset = unsafe { &mut *asset_ptr };
     let mut _bundle = unsafe { &mut *bundle_ptr };
-    
+
     let c_str_type = CString::new(_object.get_type(_asset, _bundle).clone()).unwrap();
     c_str_type.into_raw()
 }

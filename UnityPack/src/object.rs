@@ -5,18 +5,18 @@
  * All rights reserved 2017
  */
 use asset::{Asset, AssetOrRef};
-use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
-use std::io;
-use std::clone::Clone;
-use error::{Error, Result};
+use assetbundle::Signature;
 use binaryreader::{BinaryReader, ReadExtras, Teller};
+use engine::{EngineObject, EngineObjectVariant};
+use error::{Error, Result};
+use extras::containers::OrderedMap;
+use resources::{default_type_metadata, get_unity_class};
+use std::clone::Clone;
 use std::fmt;
+use std::io;
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
 use std::sync::Arc;
 use typetree::{TypeNode, DEFAULT_TYPENODE};
-use resources::{default_type_metadata, get_unity_class};
-use assetbundle::Signature;
-use extras::containers::OrderedMap;
-use engine::{EngineObject, EngineObjectVariant};
 
 #[derive(Debug)]
 pub struct ObjectInfo {
@@ -42,53 +42,53 @@ impl ObjectInfo {
         };
 
         res.path_id = try!(ObjectInfo::read_id(buffer, asset));
-        res.data_offset = try!(buffer.read_u32(&asset.endianness)) + asset.data_offset;
-        res.size = try!(buffer.read_u32(&asset.endianness));
+        res.data_offset = try!(buffer.read_u32(asset.endianness)) + asset.data_offset;
+        res.size = try!(buffer.read_u32(asset.endianness));
 
         if asset.format < 17 {
-            res.type_id = try!(buffer.read_i32(&asset.endianness)) as i64;
-            res.class_id = try!(buffer.read_i16(&asset.endianness));
+            res.type_id = try!(buffer.read_i32(asset.endianness)).into();
+            res.class_id = try!(buffer.read_i16(asset.endianness));
         } else {
-            let type_id = try!(buffer.read_i32(&asset.endianness));
-            let class_id = match &asset.tree {
-                &Some(ref tree) => tree.class_ids[type_id as usize],
-                &None => {
+            let type_id = try!(buffer.read_i32(asset.endianness));
+            let class_id = match asset.tree {
+                Some(ref tree) => tree.class_ids[type_id as usize],
+                None => {
                     return Err(Error::AssetError(
                         "Asset's typemetadata is undefined".to_string(),
                     ));
                 }
             };
-            res.type_id = class_id as i64;
+            res.type_id = class_id.into();
             res.class_id = class_id as i16;
         }
 
         if asset.format <= 10 {
-            res.is_destroyed = try!(buffer.read_i16(&asset.endianness)) != 0;
+            res.is_destroyed = try!(buffer.read_i16(asset.endianness)) != 0;
         } else if asset.format >= 11 && asset.format <= 16 {
-            let _ = try!(buffer.read_i16(&asset.endianness)); // unknown
+            let _ = try!(buffer.read_i16(asset.endianness)); // unknown
 
             if asset.format >= 15 {
                 let _ = try!(buffer.read_u8()); // unknown
             }
         }
 
-        return Ok(res);
+        Ok(res)
     }
 
     fn read_id<R: Read + Seek + Teller>(buffer: &mut R, asset: &mut Asset) -> io::Result<i64> {
         if asset.long_object_ids {
-            return buffer.read_i64(&asset.endianness);
+            return buffer.read_i64(asset.endianness);
         }
-        return asset.read_id(buffer);
+        asset.read_id(buffer)
     }
 
     pub fn get_type<R: Read + Seek + Teller>(&self, asset: &mut Asset, buffer: &mut R) -> String {
         if self.type_id > 0 {
-            return match get_unity_class(&self.type_id) {
+            return match get_unity_class(self.type_id) {
                 Ok(type_str) => type_str,
                 Err(_) => format!("<Unknown {}>", self.type_id),
             };
-        } else if !asset.typenames.contains_key(&self.type_id) {
+        } else if !&asset.typenames.contains_key(&self.type_id) {
             let rawdata = match self.read(asset, buffer) {
                 Ok(object_value) => object_value,
                 Err(_) => {
@@ -115,14 +115,14 @@ impl ObjectInfo {
     ) -> String {
         match map.get(&"m_Script".to_string()) {
             Some(script) => match script {
-                &ObjectValue::None => match &asset.tree {
-                    &Some(ref tree) => match tree.type_trees.get(&self.type_id) {
+                ObjectValue::None => match &asset.tree {
+                    Some(ref tree) => match tree.type_trees.get(&self.type_id) {
                         Some(t_type) => t_type.type_name.clone(),
                         None => format!("{}", self.type_id),
                     },
                     _ => format!("{}", self.type_id),
                 },
-                &ObjectValue::ObjectPointer(ref pointer) => {
+                ObjectValue::ObjectPointer(ref pointer) => {
                     let script_obj = match pointer.resolve(asset, buffer) {
                         Ok(script_obj) => script_obj,
                         Err(_) => {
@@ -133,7 +133,7 @@ impl ObjectInfo {
                         ObjectValue::Map(script_map) => {
                             match script_map.get(&"m_ClassName".to_string()) {
                                 Some(class_name) => match class_name {
-                                    &ObjectValue::String(ref s) => s.clone(),
+                                    ObjectValue::String(ref s) => s.clone(),
                                     _ => format!("<Unknown {}>", self.type_id),
                                 },
                                 None => format!("<Unknown {}>", self.type_id),
@@ -145,7 +145,7 @@ impl ObjectInfo {
                 _ => format!("<Unknown {}>", self.type_id),
             },
             _ => match &asset.tree {
-                &Some(ref tree) => match tree.type_trees.get(&self.type_id) {
+                Some(ref tree) => match tree.type_trees.get(&self.type_id) {
                     Some(t_type) => t_type.type_name.clone(),
                     None => format!("{}", self.type_id),
                 },
@@ -156,22 +156,18 @@ impl ObjectInfo {
 
     fn get_type_tree(&self, asset: &Asset) -> Arc<TypeNode> {
         if self.type_id < 0 {
-            match asset.tree {
-                Some(ref tree) => {
-                    if tree.type_trees.contains_key(&self.type_id) {
-                        return tree.type_trees[&self.type_id].clone();
-                    }
-                    if tree.type_trees.contains_key(&(self.class_id as i64)) {
-                        return tree.type_trees[&(self.class_id as i64)].clone();
-                    }
-                    match default_type_metadata() {
-                        Ok(ref data) => if data.type_trees.contains_key(&(self.class_id as i64)) {
-                            return data.type_trees[&(self.class_id as i64)].clone();
-                        },
-                        Err(_) => {}
-                    };
+            if let Some(ref tree) = asset.tree {
+                if tree.type_trees.contains_key(&self.type_id) {
+                    return tree.type_trees[&self.type_id].clone();
                 }
-                None => {}
+                if tree.type_trees.contains_key(&(self.class_id.into())) {
+                    return tree.type_trees[&(self.class_id.into())].clone();
+                }
+                if let Ok(ref data) = default_type_metadata() {
+                    if data.type_trees.contains_key(&(self.class_id.into())) {
+                        return data.type_trees[&(self.class_id.into())].clone();
+                    }
+                };
             };
         }
         asset.types[&self.type_id].clone()
@@ -179,7 +175,7 @@ impl ObjectInfo {
 
     fn read<R: Read + Seek + Teller>(&self, asset: &Asset, buffer: &mut R) -> Result<ObjectValue> {
         let _ = buffer.seek(SeekFrom::Start(
-            asset.bundle_offset as u64 + self.data_offset as u64,
+            asset.bundle_offset as u64 + u64::from(self.data_offset),
         ));
 
         let mut object_buf = vec![0; self.size as usize];
@@ -188,22 +184,18 @@ impl ObjectInfo {
         let typetree = self.get_type_tree(asset);
 
         let reader = BufReader::new(Cursor::new(object_buf));
-        let mut binreader = BinaryReader::new(reader, asset.endianness.clone());
+        let mut binreader = BinaryReader::new(reader, asset.endianness);
         self.read_value_from_buffer(asset, &typetree, &mut binreader)
     }
 
     pub fn read_signature(&self, asset: &Asset, signature: &mut Signature) -> Result<ObjectValue> {
         match signature {
-            &mut Signature::UnityFS(ref mut buf) => {
-                return self.read(asset, buf);
+            Signature::UnityFS(ref mut buf) => self.read(asset, buf),
+            Signature::UnityRaw(ref mut buf) => self.read(asset, buf),
+            Signature::UnityRawCompressed(ref mut buf) => {
+                self.read(asset, &mut BufReader::new(Cursor::new(buf.as_slice())))
             }
-            &mut Signature::UnityRaw(ref mut buf) => {
-                return self.read(asset, buf);
-            }
-            &mut Signature::UnityRawCompressed(ref mut buf) => {
-                return self.read(asset, &mut BufReader::new(Cursor::new(buf.as_slice())));
-            }
-            _ => return Err(Error::InvalidSignatureError),
+            _ => Err(Error::InvalidSignatureError),
         }
     }
 
@@ -216,7 +208,7 @@ impl ObjectInfo {
         let mut align = false;
         let expected_size = typetree.size;
         let pos_before = buffer.tell();
-        let ref t = typetree.type_name;
+        let t = &typetree.type_name;
 
         let result;
         if t == "bool" {
@@ -244,30 +236,31 @@ impl ObjectInfo {
             result = ObjectValue::String(try!(buffer.read_string_sized(size as usize)));
             align = typetree.children[0].post_align();
         } else {
-            let ref first_child: TypeNode;
-            if typetree.is_array {
-                first_child = typetree;
+            let first_child: &TypeNode = if typetree.is_array {
+                typetree
             } else {
-                first_child = match typetree.children.len() {
+                match typetree.children.len() {
                     x if x > 0 => &typetree.children[0],
                     _ => &DEFAULT_TYPENODE,
-                };
-            }
+                }
+            };
 
             if t.contains("PPtr<") {
-                let mut object_pointer = ObjectPointer::new(&typetree.type_name);
+                let mut object_pointer = ObjectPointer::new(typetree.type_name.to_owned());
                 result = match object_pointer.load(asset, buffer) {
-                    Ok(_) => if object_pointer.is_valid() {
-                        ObjectValue::ObjectPointer(object_pointer)
-                    } else {
-                        ObjectValue::None
-                    },
+                    Ok(_) => {
+                        if object_pointer.is_valid() {
+                            ObjectValue::ObjectPointer(object_pointer)
+                        } else {
+                            ObjectValue::None
+                        }
+                    }
                     _ => ObjectValue::None,
                 };
             } else if first_child.is_array {
                 align = first_child.post_align();
                 let size = try!(buffer.read_u32());
-                let ref array_type = first_child.children[1].type_name;
+                let array_type = &first_child.children[1].type_name;
                 if array_type == "char" || array_type == "UInt8" {
                     let mut data: Vec<u8> = vec![0; size as usize];
                     try!(buffer.read_exact(data.as_mut_slice()));
@@ -297,7 +290,7 @@ impl ObjectInfo {
                 let second = self.read_value_from_buffer(asset, &typetree.children[1], buffer)?;
                 result = ObjectValue::Pair((Box::new(first), Box::new(second)));
             } else {
-                let mut ordered_map: OrderedMap<String, ObjectValue> = OrderedMap::new();
+                let mut ordered_map: OrderedMap<String, ObjectValue> = OrderedMap::default();
 
                 for type_child in &typetree.children {
                     let child = try!(self.read_value_from_buffer(asset, type_child, buffer));
@@ -307,9 +300,9 @@ impl ObjectInfo {
                 result = load_object(t, ordered_map);
                 if t == "StreamedResource" {
                     //TODO: result.asset = self.resolve_streaming_asset(result.source);
-                } else if t == "StreamingInfo" {
-                    //TODO: result.asset = self.resolve_streaming_asset(result.path);
-                }
+                } /* else if t == "StreamingInfo" {
+                      //TODO: result.asset = self.resolve_streaming_asset(result.path);
+                  }*/
             }
         }
 
@@ -320,9 +313,7 @@ impl ObjectInfo {
         if (expected_size > 0) && (actual_size < expected_size as u64) {
             return Err(Error::ObjectError(format!(
                 "Expected read_value({}) to read {} bytes, but only read {} bytes",
-                typetree,
-                expected_size,
-                actual_size
+                typetree, expected_size, actual_size
             )));
         }
         if align || typetree.post_align() {
@@ -333,8 +324,8 @@ impl ObjectInfo {
     }
 }
 
-fn load_object(type_name: &String, ordered_map: OrderedMap<String, ObjectValue>) -> ObjectValue {
-    match EngineObject::new(type_name, ordered_map) {
+fn load_object(type_name: &str, ordered_map: OrderedMap<String, ObjectValue>) -> ObjectValue {
+    match EngineObject::get_object(type_name, ordered_map) {
         EngineObjectVariant::EngineObject(engine_object) => {
             ObjectValue::EngineObject(engine_object)
         }
@@ -378,91 +369,101 @@ pub trait ToByteVec<T> {
 impl ObjectValue {
     pub fn to_bool(&self) -> Result<bool> {
         match self {
-            &ObjectValue::Bool(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not bool variant but {:?}", self)
-            )),
+            ObjectValue::Bool(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not bool variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_u8(&self) -> Result<u8> {
         match self {
-            &ObjectValue::U8(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not u8 variant but {:?}", self)
-            )),
+            ObjectValue::U8(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not u8 variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_u16(&self) -> Result<u16> {
         match self {
-            &ObjectValue::U16(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not u16 variant but {:?}", self)
-            )),
+            ObjectValue::U16(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not u16 variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_i32(&self) -> Result<i32> {
         match self {
-            &ObjectValue::I32(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not i32 variant but {:?}", self)
-            )),
+            ObjectValue::I32(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not i32 variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_u32(&self) -> Result<u32> {
         match self {
-            &ObjectValue::U32(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not u32 variant but {:?}", self)
-            )),
+            ObjectValue::U32(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not u32 variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_f32(&self) -> Result<f32> {
         match self {
-            &ObjectValue::Float(b) => Ok(b),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not f32 variant but {:?}", self)
-            )),
+            ObjectValue::Float(b) => Ok(*b),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not f32 variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn to_string(&self) -> Result<String> {
         match self {
-            &ObjectValue::String(ref s) => Ok(s.clone()),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not string variant but {:?}", self)
-            )),
+            ObjectValue::String(ref s) => Ok(s.clone()),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not string variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn into_map(self) -> Result<OrderedMap<String, ObjectValue>> {
         match self {
             ObjectValue::Map(s) => Ok(s),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not map variant but {:?}", self)
-            )),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not map variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn into_vec(self) -> Result<Vec<ObjectValue>> {
         match self {
             ObjectValue::Array(v) => Ok(v),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not vec variant but {:?}", self)
-            )),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not vec variant but {:?}",
+                self
+            ))),
         }
     }
 
     pub fn into_pair(self) -> Result<(Box<ObjectValue>, Box<ObjectValue>)> {
         match self {
             ObjectValue::Pair(p) => Ok(p),
-            _ => Err(Error::ObjectError(
-                format!("ObjectValue is not pair variant but {:?}", self)
-            )),
+            _ => Err(Error::ObjectError(format!(
+                "ObjectValue is not pair variant but {:?}",
+                self
+            ))),
         }
     }
 }
@@ -470,7 +471,7 @@ impl ObjectValue {
 impl ToByteVec<u8> for ObjectValue {
     fn to_byte_vec(&self) -> Result<Vec<u8>> {
         match self {
-            &ObjectValue::U8Array(ref s) => Ok(s.clone()),
+            ObjectValue::U8Array(ref s) => Ok(s.clone()),
             _ => Err(Error::ObjectError(
                 "ObjectValue is not u8 array variant".to_string(),
             )),
@@ -486,9 +487,9 @@ pub struct ObjectPointer {
 }
 
 impl ObjectPointer {
-    fn new(name: &String) -> ObjectPointer {
+    fn new(name: String) -> ObjectPointer {
         ObjectPointer {
-            type_name: name.clone(),
+            type_name: name,
             file_id: 0,
             path_id: 0,
         }

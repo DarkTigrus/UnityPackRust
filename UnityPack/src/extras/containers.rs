@@ -5,10 +5,10 @@
  * All rights reserved 2017
  */
 
-use std::collections::HashMap;
 use std::collections::hash_map::Keys;
-use std::hash::Hash;
+use std::collections::HashMap;
 use std::fmt;
+use std::hash::Hash;
 
 /// A HashMap which remembers its insertion order.
 pub struct OrderedMap<K: Hash + Eq, V> {
@@ -33,17 +33,22 @@ impl<K: Hash + Eq + fmt::Debug, V: fmt::Debug> fmt::Debug for OrderedMap<K, V> {
     }
 }
 
-impl<K, V> OrderedMap<K, V>
+impl<K, V> Default for OrderedMap<K, V>
 where
     K: Eq + Hash + Clone,
 {
-    pub fn new() -> OrderedMap<K, V> {
+    fn default() -> Self {
         OrderedMap {
             items: HashMap::new(),
             indices: HashMap::new(),
         }
     }
+}
 
+impl<K, V> OrderedMap<K, V>
+where
+    K: Eq + Hash + Clone,
+{
     /// Inserts a key-value pair into the map.
     ///
     /// If the map did not have this key present, [`None`] is returned.

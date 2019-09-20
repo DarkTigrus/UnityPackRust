@@ -4,10 +4,10 @@
  *
  * All rights reserved 2017
  */
-use std::io::{Read, Seek, SeekFrom, BufReader, Error, ErrorKind};
-use std::io;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use std::fmt;
+use std::io;
+use std::io::{BufReader, Error, ErrorKind, Read, Seek, SeekFrom};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub enum Endianness {
@@ -38,7 +38,6 @@ pub trait ReadExtras: io::Read {
     }
 
     fn read_string_sized(&mut self, size: usize) -> io::Result<String> {
-
         let mut buf = vec![0; size];
         try!(self.read_exact(buf.as_mut_slice()));
 
@@ -61,50 +60,50 @@ pub trait ReadExtras: io::Read {
         Ok(b != 0)
     }
 
-    fn read_u16(&mut self, endiannes: &Endianness) -> io::Result<u16> {
-        match *endiannes {
+    fn read_u16(&mut self, endiannes: Endianness) -> io::Result<u16> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_u16::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_u16::<BigEndian>(self),
         }
     }
 
-    fn read_i16(&mut self, endiannes: &Endianness) -> io::Result<i16> {
-        match *endiannes {
+    fn read_i16(&mut self, endiannes: Endianness) -> io::Result<i16> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_i16::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_i16::<BigEndian>(self),
         }
     }
 
-    fn read_u32(&mut self, endiannes: &Endianness) -> io::Result<u32> {
-        match *endiannes {
+    fn read_u32(&mut self, endiannes: Endianness) -> io::Result<u32> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_u32::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_u32::<BigEndian>(self),
         }
     }
 
-    fn read_i32(&mut self, endiannes: &Endianness) -> io::Result<i32> {
-        match *endiannes {
+    fn read_i32(&mut self, endiannes: Endianness) -> io::Result<i32> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_i32::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_i32::<BigEndian>(self),
         }
     }
 
-    fn read_u64(&mut self, endiannes: &Endianness) -> io::Result<u64> {
-        match *endiannes {
+    fn read_u64(&mut self, endiannes: Endianness) -> io::Result<u64> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_u64::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_u64::<BigEndian>(self),
         }
     }
 
-    fn read_i64(&mut self, endiannes: &Endianness) -> io::Result<i64> {
-        match *endiannes {
+    fn read_i64(&mut self, endiannes: Endianness) -> io::Result<i64> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_i64::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_i64::<BigEndian>(self),
         }
     }
 
-    fn read_f32(&mut self, endiannes: &Endianness) -> io::Result<f32> {
-        match *endiannes {
+    fn read_f32(&mut self, endiannes: Endianness) -> io::Result<f32> {
+        match endiannes {
             Endianness::Little => ReadBytesExt::read_f32::<LittleEndian>(self),
             Endianness::Big => ReadBytesExt::read_f32::<BigEndian>(self),
         }
@@ -151,7 +150,7 @@ where
         BinaryReader {
             buffer: readable,
             cursor: 0,
-            endianness: endianness,
+            endianness,
         }
     }
 
@@ -166,32 +165,32 @@ where
 
     pub fn read_u16(&mut self) -> io::Result<u16> {
         self.cursor += 2;
-        ReadExtras::read_u16(&mut self.buffer, &self.endianness)
+        ReadExtras::read_u16(&mut self.buffer, self.endianness)
     }
 
     pub fn read_i16(&mut self) -> io::Result<i16> {
         self.cursor += 2;
-        ReadExtras::read_i16(&mut self.buffer, &self.endianness)
+        ReadExtras::read_i16(&mut self.buffer, self.endianness)
     }
 
     pub fn read_u32(&mut self) -> io::Result<u32> {
         self.cursor += 4;
-        ReadExtras::read_u32(&mut self.buffer, &self.endianness)
+        ReadExtras::read_u32(&mut self.buffer, self.endianness)
     }
 
     pub fn read_i32(&mut self) -> io::Result<i32> {
         self.cursor += 4;
-        ReadExtras::read_i32(&mut self.buffer, &self.endianness)
+        ReadExtras::read_i32(&mut self.buffer, self.endianness)
     }
 
     pub fn read_u64(&mut self) -> io::Result<u64> {
         self.cursor += 8;
-        ReadExtras::read_u64(&mut self.buffer, &self.endianness)
+        ReadExtras::read_u64(&mut self.buffer, self.endianness)
     }
 
     pub fn read_i64(&mut self) -> io::Result<i64> {
         self.cursor += 8;
-        ReadExtras::read_i64(&mut self.buffer, &self.endianness)
+        ReadExtras::read_i64(&mut self.buffer, self.endianness)
     }
 
     pub fn read_bytes(&mut self, bytes_to_read: usize) -> io::Result<Vec<u8>> {
@@ -205,7 +204,7 @@ where
 
     pub fn read_f32(&mut self) -> io::Result<f32> {
         self.cursor += 4;
-        ReadExtras::read_f32(&mut self.buffer, &self.endianness)
+        ReadExtras::read_f32(&mut self.buffer, self.endianness)
     }
 }
 
@@ -218,7 +217,6 @@ where
     }
 
     fn align(&mut self) {
-
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
@@ -254,7 +252,7 @@ where
         match self.buffer.seek(pos) {
             Ok(p) => {
                 self.cursor = p;
-                return Ok(p);
+                Ok(p)
             }
             Err(err) => Err(err),
         }

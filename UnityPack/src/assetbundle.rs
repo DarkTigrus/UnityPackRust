@@ -4,38 +4,31 @@
  *
  * All rights reserved 2017
  */
-use std::cmp;
-use std::fmt;
-use std::io;
-use std::fs::File;
-use std::io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom};
 use asset::Asset;
 use binaryreader::*;
-use lz4_compress;
-use extras::lzma::decompress_raw;
-use lzma;
 use error::{Error, Result};
+use extras::lzma::decompress_raw;
+use lz4_compress;
+use lzma;
+use std::cmp;
+use std::fmt;
+use std::fs::File;
+use std::io;
+use std::io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom};
 
-fn decompress_data(data: &Vec<u8>, compression_type: &CompressionType) -> Result<Vec<u8>> {
+fn decompress_data(data: &[u8], compression_type: &CompressionType) -> Result<Vec<u8>> {
     match *compression_type {
-        CompressionType::LZ4 |
-        CompressionType::LZ4HC => {
-            match lz4_compress::decompress(data.as_slice()) {
-                Err(err) => {
-                    return Err(Error::LZ4DecompressionError(Box::new(err)));
-                }
+        CompressionType::LZ4 | CompressionType::LZ4HC => {
+            match lz4_compress::decompress(data) {
+                Err(err) => Err(Error::LZ4DecompressionError(Box::new(err))),
                 Ok(buf) => Ok(buf),
             }
         }
-        CompressionType::LZMA | CompressionType::LZHAM => {
-            match lzma::decompress(data.as_slice()) {
-                Ok(data) => Ok(data),
-                Err(err) => {
-                    return Err(Error::LZMADecompressionError(Box::new(err)));
-                }
-            }
-        }
-        _ => Ok(data.clone()),
+        CompressionType::LZMA | CompressionType::LZHAM => match lzma::decompress(data) {
+            Ok(data) => Ok(data),
+            Err(err) => Err(Error::LZMADecompressionError(Box::new(err))),
+        },
+        _ => Ok(data.to_vec()),
     }
 }
 
@@ -52,7 +45,7 @@ pub enum Signature {
 impl Seek for Signature {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         match self {
-            &mut Signature::UnityFS(ref mut buf) => buf.seek(pos),
+            Signature::UnityFS(ref mut buf) => buf.seek(pos),
             _ => Ok(0),
         }
     }
@@ -95,13 +88,13 @@ enum CompressionType {
 }
 
 impl CompressionType {
-    fn from(x: &u8) -> CompressionType {
+    fn from(x: u8) -> CompressionType {
         match x {
-            x if *x == CompressionType::None as u8 => CompressionType::None,
-            x if *x == CompressionType::LZMA as u8 => CompressionType::LZMA,
-            x if *x == CompressionType::LZ4 as u8 => CompressionType::LZ4,
-            x if *x == CompressionType::LZ4HC as u8 => CompressionType::LZ4HC,
-            x if *x == CompressionType::LZHAM as u8 => CompressionType::LZHAM,
+            x if x == CompressionType::None as u8 => CompressionType::None,
+            x if x == CompressionType::LZMA as u8 => CompressionType::LZMA,
+            x if x == CompressionType::LZ4 as u8 => CompressionType::LZ4,
+            x if x == CompressionType::LZ4HC as u8 => CompressionType::LZ4HC,
+            x if x == CompressionType::LZHAM as u8 => CompressionType::LZHAM,
             _ => CompressionType::Unknown,
         }
     }
@@ -120,7 +113,6 @@ pub struct AssetBundle {
 
 impl AssetBundle {
     pub fn load_from_file(file_path: &str) -> Result<AssetBundle> {
-
         // open file
         let file = File::open(file_path)?;
         let mut bin_reader = BinaryReader::new(BufReader::new(file), Endianness::Big);
@@ -161,8 +153,8 @@ impl AssetBundle {
     }
 
     pub fn is_compressed(&self) -> bool {
-        match &self.signature {
-            &Signature::UnityWeb(..) => true,
+        match self.signature {
+            Signature::UnityWeb(..) => true,
             _ => false,
         }
     }
@@ -179,8 +171,8 @@ impl AssetBundle {
         });
 
         let flags = (buffer.read_u32()? as u8) & 0x3F;
-        let compression_type = CompressionType::from(&flags);
-        let raw_data = buffer.read_bytes((ciblock_size as usize))?;
+        let compression_type = CompressionType::from(flags);
+        let raw_data = buffer.read_bytes(ciblock_size as usize)?;
 
         let decompressed_data = decompress_data(&raw_data, &compression_type)?;
         let dreader = BufReader::new(Cursor::new(decompressed_data.as_slice()));
@@ -223,7 +215,7 @@ impl AssetBundle {
             self.assets.push(asset);
         }
 
-        if self.assets.len() > 0 {
+        if !self.assets.is_empty() {
             self.name = self.assets[0].name.clone();
         }
 
@@ -231,7 +223,6 @@ impl AssetBundle {
     }
 
     fn load_raw(&mut self, mut buffer: BinaryReader<File>, format: &str) -> Result<()> {
-
         let mut descriptor: RawDescriptor = Default::default();
 
         descriptor.file_size = buffer.read_u32()?;
@@ -257,14 +248,13 @@ impl AssetBundle {
 
         self.name = buffer.read_string()?;
 
-        buffer.seek(SeekFrom::Start(descriptor.header_size as u64))?;
+        buffer.seek(SeekFrom::Start(descriptor.header_size.into()))?;
 
-        let num_assets: u32;
-        if !self.is_compressed() {
-            num_assets = buffer.read_u32()?;
+        let num_assets = if self.is_compressed() {
+            1
         } else {
-            num_assets = 1;
-        }
+            buffer.read_u32()?
+        };
 
         self.signature = match format {
             "UnityWeb" => Signature::UnityWeb(buffer.take_buffer()),
@@ -312,7 +302,7 @@ struct ArchiveBlockInfo {
 impl ArchiveBlockInfo {
     fn compression_type(&self) -> CompressionType {
         let flag = (self.flags as u8 & 0x3f) as u8;
-        CompressionType::from(&flag)
+        CompressionType::from(flag)
     }
 
     fn is_compressed(&self) -> bool {
@@ -327,9 +317,8 @@ impl ArchiveBlockInfo {
         let compression_type = self.compression_type();
         match compression_type {
             CompressionType::LZMA => decompress_raw(&data, self.uncompressed_size as usize),
-            CompressionType::LZ4 |
-            CompressionType::LZ4HC => {
-                return decompress_data(&data, &compression_type);
+            CompressionType::LZ4 | CompressionType::LZ4HC => {
+                decompress_data(&data, &compression_type)
             }
             _ => Err(Error::CompressionNotImplementedError),
         }
@@ -352,7 +341,7 @@ pub struct ArchiveBlockStorageReader<R: Read + Seek> {
     /// offset to the current block in the virtual buffer
     current_block_offset: u64,
     /// current uncompressed block
-    current_stream: Vec<u8>,
+    current_buffer: Vec<u8>,
 }
 
 impl<R> ArchiveBlockStorageReader<R>
@@ -363,60 +352,61 @@ where
         mut buffer: BufReader<R>,
         blocks: Vec<ArchiveBlockInfo>,
     ) -> ArchiveBlockStorageReader<R> {
-        let virtual_size = blocks.iter().fold(0, |total, next| {
-            total + next.uncompressed_size as u64
-        });
+        let virtual_size = blocks
+            .iter()
+            .fold(0, |total, next| total + u64::from(next.uncompressed_size));
 
         let base_offset = buffer.tell();
 
         ArchiveBlockStorageReader {
             virtual_cursor: 0,
-            buffer: buffer,
-            blocks: blocks,
-            virtual_size: virtual_size,
-            base_offset: base_offset,
+            buffer,
+            blocks,
+            virtual_size,
+            base_offset,
             current_block_idx: -1 as isize,
             current_block_offset: 0,
-            current_stream: Vec::new(),
+            current_buffer: Vec::new(),
         }
     }
 
-    fn seek_to_block(&mut self, pos: &u64) -> io::Result<()> {
+    fn seek_to_block(&mut self, pos: u64) -> io::Result<()> {
         // check if we are already in the corresponding block
-        if (self.current_block_idx < 0) ||
-            ((*pos < self.current_block_offset) ||
-                 (*pos >
-                      (self.current_block_offset +
-                           self.blocks[self.current_block_idx as usize].uncompressed_size as u64)))
+        if (self.current_block_idx < 0)
+            || ((pos < self.current_block_offset)
+                || (pos
+                    > (self.current_block_offset
+                        + u64::from(
+                            self.blocks[self.current_block_idx as usize].uncompressed_size,
+                        ))))
         {
             let mut base_offset: u64 = 0;
             let mut offset = 0;
             let mut found = false;
             for b in 0..self.blocks.len() {
                 let block = &self.blocks[b];
-                if offset + block.uncompressed_size as u64 > *pos {
+                if offset + u64::from(block.uncompressed_size) > pos {
                     self.current_block_idx = b as isize;
                     found = true;
                     break;
                 }
-                base_offset += block.compressed_size as u64;
-                offset += block.uncompressed_size as u64;
+                base_offset += u64::from(block.compressed_size);
+                offset += u64::from(block.uncompressed_size);
             }
 
             if !found {
                 self.current_block_idx = -1;
-                self.current_stream = Vec::new();
+                self.current_buffer = Vec::new();
                 return Ok(());
             }
 
             self.current_block_offset = offset;
-            self.buffer.seek(
-                SeekFrom::Start(self.base_offset + base_offset),
-            )?;
+            self.buffer
+                .seek(SeekFrom::Start(self.base_offset + base_offset))?;
             let current_block = &self.blocks[self.current_block_idx as usize];
             let mut compressed_data = vec![0; current_block.compressed_size as usize];
             self.buffer.read_exact(compressed_data.as_mut_slice())?;
-            self.current_stream = current_block.decompress(compressed_data)?;
+            self.current_buffer = current_block.decompress(compressed_data)?;
         }
         Ok(())
     }
@@ -427,24 +417,23 @@ where
     R: Read + Seek,
 {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-
         let mut size = buf.len();
         let mut bytes: Vec<u8> = Vec::new();
 
         while size != 0 && self.virtual_cursor < self.virtual_size {
             let cursor = self.virtual_cursor;
-            self.seek_to_block(&cursor)?;
+            self.seek_to_block(cursor)?;
 
-            let current_stream_cursor = self.virtual_cursor - self.current_block_offset;
+            let current_buffer_cursor = self.virtual_cursor - self.current_block_offset;
 
-            let current_stream_len = self.current_stream.len();
-            if (current_stream_len as u64) < current_stream_cursor {
+            let current_buffer_len = self.current_buffer.len();
+            if (current_buffer_len as u64) < current_buffer_cursor {
                 return Err(io::Error::new(
                     ErrorKind::InvalidData,
                     "Error while reading block storeage",
                 ));
             }
-            let remaining = (current_stream_len as u64) - current_stream_cursor;
+            let remaining = (current_buffer_len as u64) - current_buffer_cursor;
             let read_size = cmp::min(size, remaining as usize);
 
             if read_size == 0 {
@@ -453,8 +442,8 @@ where
                     "Error while reading block storeage",
                 ));
             }
-            let part = &self.current_stream[(current_stream_cursor as usize)..
-                                                ((current_stream_cursor as usize) + read_size)];
+            let part = &self.current_buffer
+                [(current_buffer_cursor as usize)..((current_buffer_cursor as usize) + read_size)];
             size -= read_size;
             self.virtual_cursor += read_size as u64;
             bytes.extend(part);
@@ -473,7 +462,6 @@ where
     }
 
     fn align(&mut self) {
-
         let old = self.tell() as i64;
         let new = (old + 3) & -4;
         if new > old {
@@ -508,7 +496,7 @@ where
             }
         };
 
-        self.seek_to_block(&new_pos)?;
+        self.seek_to_block(new_pos)?;
         self.virtual_cursor = new_pos;
         Ok(self.virtual_cursor)
     }

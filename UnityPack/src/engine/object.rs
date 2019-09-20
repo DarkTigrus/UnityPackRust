@@ -5,10 +5,10 @@
  * All rights reserved 2017
  */
 
+use super::EngineObject;
 use error::{Error, Result};
 use extras::containers::OrderedMap;
 use object::ObjectValue;
-use super::EngineObject;
 
 #[derive(Debug)]
 pub struct Object {
@@ -17,7 +17,7 @@ pub struct Object {
 
 impl Object {
     pub fn new(map: &OrderedMap<String, ObjectValue>) -> Result<Object> {
-        match map.get(&format!("m_Name")) {
+        match map.get(&("m_Name").to_owned()) {
             Some(val) => {
                 let name = match val.to_string() {
                     Ok(s) => s,
@@ -26,9 +26,11 @@ impl Object {
                     }
                 };
 
-                Ok(Object { name: name })
+                Ok(Object { name })
             }
-            None => Ok(Object { name: format!("") }),
+            None => Ok(Object {
+                name: String::new(),
+            }),
         }
     }
 }

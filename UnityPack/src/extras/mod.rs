@@ -4,8 +4,8 @@
  *
  * All rights reserved 2017
  */
-pub mod lzma;
 pub mod containers;
+pub mod lzma;
 
 #[cfg(test)]
 mod tests {
@@ -14,7 +14,7 @@ mod tests {
 
     #[test]
     fn test_ordered_map() {
-        let mut map = OrderedMap::new();
+        let mut map = OrderedMap::default();
         map.insert("D", 4);
         map.insert("E", 3);
         map.insert("S", 2);

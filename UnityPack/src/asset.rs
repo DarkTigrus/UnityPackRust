@@ -6,19 +6,19 @@
  */
 
 use assetbundle::AssetBundle;
-use assetbundle::Signature;
 use assetbundle::FSDescriptor;
-use typetree::{TypeMetadata, TypeNode};
-use resources::default_type_metadata;
+use assetbundle::Signature;
 use binaryreader::*;
-use object::ObjectInfo;
-use std::collections::HashMap;
-use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
-use std::io;
-use lzma;
-use uuid::Uuid;
-use std::sync::Arc;
 use error::{Error, Result};
+use lzma;
+use object::ObjectInfo;
+use resources::default_type_metadata;
+use std::collections::HashMap;
+use std::io;
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom};
+use std::sync::Arc;
+use typetree::{TypeMetadata, TypeNode};
+use uuid::Uuid;
 
 pub struct Asset {
     pub name: String,
@@ -42,7 +42,7 @@ pub struct Asset {
 impl Asset {
     pub fn new(bundle: &mut AssetBundle) -> Result<Asset> {
         let is_compressed = bundle.is_compressed();
-        let ref descriptor = bundle.descriptor;
+        let descriptor = &bundle.descriptor;
 
         let decompressed: Vec<u8>;
 
@@ -67,7 +67,7 @@ impl Asset {
 
         {
             let buffer = match &mut bundle.signature {
-                &mut Signature::UnityFS(ref mut buf) => {
+                Signature::UnityFS(ref mut buf) => {
                     asset.bundle_offset = buf.tell();
                     return Ok(asset);
                 }
@@ -84,11 +84,11 @@ impl Asset {
             let header_size: u32;
             if !is_compressed {
                 asset.name = buffer.read_string()?;
-                header_size = buffer.read_u32(&Endianness::Big)?;
-                buffer.read_u32(&Endianness::Big)?; // size
+                header_size = buffer.read_u32(Endianness::Big)?;
+                buffer.read_u32(Endianness::Big)?; // size
             } else {
                 header_size = match descriptor {
-                    &FSDescriptor::Raw(ref desc) => desc.asset_header_size,
+                    FSDescriptor::Raw(ref desc) => desc.asset_header_size,
                     _ => {
                         return Err(Error::AssetError("Invalid raw descriptor".to_string()));
                     }
@@ -99,7 +99,7 @@ impl Asset {
             if is_compressed {
                 let mut compressed_data = Vec::new();
                 try!(buffer.read_to_end(&mut compressed_data));
-                decompressed = match lzma::decompress(&mut compressed_data) {
+                decompressed = match lzma::decompress(&compressed_data) {
                     Ok(data) => data,
                     Err(err) => {
                         return Err(Error::LZMADecompressionError(Box::new(err)));
@@ -108,7 +108,7 @@ impl Asset {
                 asset.bundle_offset = 0;
                 try!(buffer.seek(SeekFrom::Start(ofs))); // restore pointer
             } else {
-                asset.bundle_offset = offset + header_size as u64 - 4;
+                asset.bundle_offset = offset + u64::from(header_size) - 4;
                 if asset.is_resource() {
                     asset.bundle_offset -= asset.name.len() as u64;
                 }
@@ -140,13 +140,13 @@ impl Asset {
         }
 
         match signature {
-            &mut Signature::UnityFS(ref mut buf) => {
+            Signature::UnityFS(ref mut buf) => {
                 self.load_from_buffer(buf)?;
             }
-            &mut Signature::UnityRaw(ref mut buf) => {
+            Signature::UnityRaw(ref mut buf) => {
                 self.load_from_buffer(buf)?;
             }
-            &mut Signature::UnityRawCompressed(ref mut buf) => {
+            Signature::UnityRawCompressed(ref mut buf) => {
                 self.load_from_buffer(&mut BufReader::new(Cursor::new(buf.as_slice())))?;
             }
             _ => {
@@ -162,26 +162,26 @@ impl Asset {
 
     fn load_from_buffer<R: Read + Seek + Teller>(&mut self, buffer: &mut R) -> Result<()> {
         let _ = buffer.seek(SeekFrom::Start(self.bundle_offset));
-        self.metadata_size = buffer.read_u32(&self.endianness)?;
-        self.file_size = buffer.read_u32(&self.endianness)?;
-        self.format = buffer.read_u32(&self.endianness)?;
-        self.data_offset = buffer.read_u32(&self.endianness)?;
+        self.metadata_size = buffer.read_u32(self.endianness)?;
+        self.file_size = buffer.read_u32(self.endianness)?;
+        self.format = buffer.read_u32(self.endianness)?;
+        self.data_offset = buffer.read_u32(self.endianness)?;
 
         if self.format >= 9 {
-            self.endianness = match buffer.read_u32(&self.endianness)? {
+            self.endianness = match buffer.read_u32(self.endianness)? {
                 0 => Endianness::Little,
                 _ => Endianness::Big,
             };
         }
 
-        let tree = TypeMetadata::new(buffer, self.format, &self.endianness)?;
+        let tree = TypeMetadata::new(buffer, self.format, self.endianness)?;
         self.tree = Some(tree);
 
         if (self.format >= 7) && (self.format <= 13) {
-            self.long_object_ids = buffer.read_u32(&self.endianness)? != 0
+            self.long_object_ids = buffer.read_u32(self.endianness)? != 0
         }
 
-        let num_objects = buffer.read_u32(&self.endianness)?;
+        let num_objects = buffer.read_u32(self.endianness)?;
 
         for _ in 0..num_objects {
             if self.format >= 14 {
@@ -192,21 +192,21 @@ impl Asset {
         }
 
         if self.format >= 11 {
-            let num_adds = buffer.read_u32(&self.endianness)?;
+            let num_adds = buffer.read_u32(self.endianness)?;
             for _ in 0..num_adds {
                 if self.format >= 14 {
                     buffer.align();
                 }
                 let id = self.read_id(buffer)?;
-                let add = buffer.read_i32(&self.endianness)?;
+                let add = buffer.read_i32(self.endianness)?;
                 self.adds.push((id, add));
             }
         }
 
-        let num_refs = buffer.read_u32(&self.endianness)?;
+        let num_refs = buffer.read_u32(self.endianness)?;
         if self.format >= 6 {
             for _ in 0..num_refs {
-                let asset_ref = AssetRef::new(buffer, &self.endianness)?;
+                let asset_ref = AssetRef::new(buffer, self.endianness)?;
                 self.asset_refs.push(AssetOrRef::AssetRef(asset_ref));
             }
         }
@@ -241,9 +241,9 @@ impl Asset {
     }
 
     fn register_object(&mut self, obj: ObjectInfo) -> Result<()> {
-        let ref tree = match &self.tree {
-            &Some(ref t) => t,
-            &None => return Ok(()),
+        let tree = match self.tree {
+            Some(ref t) => t,
+            None => return Ok(()),
         };
 
         match tree.type_trees.get(&obj.type_id) {
@@ -254,8 +254,8 @@ impl Asset {
                 match self.types.get(&obj.type_id) {
                     Some(_) => {}
                     None => {
-                        let ref trees = default_type_metadata()?.type_trees;
-                        match trees.get(&(obj.class_id as i64)) {
+                        let trees = &default_type_metadata()?.type_trees;
+                        match trees.get(&(obj.class_id.into())) {
                             Some(o) => {
                                 self.types.insert(obj.type_id, o.clone());
                             }
@@ -270,16 +270,12 @@ impl Asset {
             }
         };
 
-        match self.objects.get(&obj.path_id) {
-            Some(_) => {
-                return Err(Error::AssetError(format!(
-                    "Duplicate asset object: {} (path_id={})",
-                    obj,
-                    obj.path_id
-                )))
-            }
-            None => {}
-        }
+        if self.objects.get(&obj.path_id).is_some() {
+            return Err(Error::AssetError(format!(
+                "Duplicate asset object: {} (path_id={})",
+                obj, obj.path_id
+            )));
+        };
 
         self.objects.insert(obj.path_id, obj);
         Ok(())
@@ -287,16 +283,16 @@ impl Asset {
 
     pub fn read_id<R: Read + Seek + Teller>(&self, buffer: &mut R) -> io::Result<i64> {
         if self.format >= 14 {
-            return buffer.read_i64(&self.endianness);
+            return buffer.read_i64(self.endianness);
         }
-        let result = buffer.read_i32(&self.endianness)? as i64;
-        return Ok(result);
+        let result = buffer.read_i32(self.endianness)?.into();
+        Ok(result)
     }
 
-    pub fn get_file_by_id(&self, id: &i32) -> Result<String> {
-        match &self.asset_refs[*id as usize] {
-            &AssetOrRef::Asset => Ok(self.name.clone()),
-            &AssetOrRef::AssetRef(ref a_ref) => Ok(a_ref.file_path.clone()),
+    pub fn get_file_by_id(&self, id: i32) -> Result<String> {
+        match self.asset_refs[id as usize] {
+            AssetOrRef::Asset => Ok(self.name.clone()),
+            AssetOrRef::AssetRef(ref a_ref) => Ok(a_ref.file_path.clone()),
         }
     }
 }
@@ -313,7 +309,7 @@ pub struct AssetRef {
 impl AssetRef {
     pub fn new<R: Read + Seek + Teller>(
         buffer: &mut R,
-        endianness: &Endianness,
+        endianness: Endianness,
     ) -> Result<AssetRef> {
         let asset_path = buffer.read_string()?;
         let mut uuid_buffer = [0; 16];
@@ -326,10 +322,10 @@ impl AssetRef {
         let file_path = buffer.read_string()?;
 
         Ok(AssetRef {
-            asset_path: asset_path,
-            guid: guid,
-            asset_type: asset_type,
-            file_path: file_path,
+            asset_path,
+            guid,
+            asset_type,
+            file_path,
         })
     }
 }

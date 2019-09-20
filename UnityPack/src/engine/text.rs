@@ -5,9 +5,9 @@
  * All rights reserved 2017
  */
 
-use error::{Error, Result};
 use super::EngineObject;
 use engine::object::Object;
+use error::{Error, Result};
 
 pub trait IntoTextAsset {
     fn to_textasset(self) -> Result<TextAsset>;
@@ -28,4 +28,3 @@ impl IntoTextAsset for EngineObject {
         })
     }
 }
-

@@ -6,10 +6,10 @@
  */
 
 use super::EngineObject;
-use object::ToByteVec;
-use error::{Error, Result};
-use bcndecode::{BcnDecoderFormat, BcnEncoding, decode};
+use bcndecode::{decode, BcnDecoderFormat, BcnEncoding};
 use decrunch::CrunchedData;
+use error::{Error, Result};
+use object::ToByteVec;
 
 pub trait IntoTexture2D {
     fn to_texture2d(self) -> Result<Texture2D>;
@@ -24,7 +24,7 @@ pub struct Texture2D {
 }
 
 impl Texture2D {
-    pub fn to_image(self) -> Result<Vec<u8>> {
+    pub fn to_image(&self) -> Result<Vec<u8>> {
         let encoding = match self.texture_format {
             TextureFormat::DXT1 | TextureFormat::DXT1Crunched => BcnEncoding::Bc1,
             TextureFormat::DXT5 | TextureFormat::DXT5Crunched => BcnEncoding::Bc3,
@@ -32,14 +32,14 @@ impl Texture2D {
             TextureFormat::BC5 => BcnEncoding::Bc5,
             TextureFormat::BC6H => BcnEncoding::Bc6H,
             // RAW formats
-            TextureFormat::Alpha8 |
-            TextureFormat::ARGB4444 |
-            TextureFormat::RGBA4444 |
-            TextureFormat::RGB565 |
-            TextureFormat::RGB24 |
-            TextureFormat::RGBA32 |
-            TextureFormat::ARGB32 => {
-                return Ok(self.data);
+            TextureFormat::Alpha8
+            | TextureFormat::ARGB4444
+            | TextureFormat::RGBA4444
+            | TextureFormat::RGB565
+            | TextureFormat::RGB24
+            | TextureFormat::RGBA32
+            | TextureFormat::ARGB32 => {
+                return Ok(self.data.to_owned());
             }
             _ => {
                 return Err(Error::EngineError(format!(
@@ -50,41 +50,37 @@ impl Texture2D {
         };
 
         let format = match self.texture_format.pixel_format() {
-            PixelFormat::RGB |  PixelFormat::RGB16 => {
-                BcnDecoderFormat::RGBA
-            }
-            _ => {
-                match self.texture_format {
-                    TextureFormat::BC4 => {
-                        BcnDecoderFormat::LUM
-                    }
-                    TextureFormat::BC6H => {
-                        BcnDecoderFormat::RGBA
-                    }
-                    _ => {
-                        BcnDecoderFormat::RGBA
-                    }
-                }
-            }
+            PixelFormat::RGB | PixelFormat::RGB16 => BcnDecoderFormat::RGBA,
+            _ => match self.texture_format {
+                TextureFormat::BC4 => BcnDecoderFormat::LUM,
+                TextureFormat::BC6H => BcnDecoderFormat::RGBA,
+                _ => BcnDecoderFormat::RGBA,
+            },
         };
-        
+
         // decrunch if needed
         let input_data = match self.texture_format {
             TextureFormat::DXT1Crunched | TextureFormat::DXT5Crunched => {
                 let crunched_data = CrunchedData::new(&self.data);
                 match crunched_data.decode_level(0) {
                     Some(data) => data,
-                    None => {return Err(Error::EngineError(format!(
-                    "DXT decrunch failed"
-                ))); } 
+                    None => {
+                        return Err(Error::EngineError("DXT decrunch failed".to_owned()));
+                    }
                 }
             }
-            _ => self.data
+            _ => self.data.to_owned(),
         };
 
-        match decode(&input_data, self.width as usize, self.height as usize, encoding, format) {
+        match decode(
+            &input_data,
+            self.width as usize,
+            self.height as usize,
+            encoding,
+            format,
+        ) {
             Ok(result) => Ok(result),
-            Err(err) => Err(Error::from(err))
+            Err(err) => Err(Error::from(err)),
         }
     }
 }
@@ -199,9 +195,9 @@ impl TextureFormat {
             24 => Ok(TextureFormat::BC6H),
 
             // PowerVR
-            30 => Ok(TextureFormat::PvrtcRgb2), // Pvrtc2bppRgb
+            30 => Ok(TextureFormat::PvrtcRgb2),  // Pvrtc2bppRgb
             31 => Ok(TextureFormat::PvrtcRgba2), // Pvrtc2bppRgba
-            32 => Ok(TextureFormat::PvrtcRgb4), // Pvrtc4bppRgb
+            32 => Ok(TextureFormat::PvrtcRgb4),  // Pvrtc4bppRgb
             33 => Ok(TextureFormat::PvrtcRgba4), // Pvrtc4bppRgba
 
             // Ericsson (Android)
@@ -236,20 +232,21 @@ impl TextureFormat {
             57 => Ok(TextureFormat::AstcRgba8x8),
             58 => Ok(TextureFormat::AstcRgba10x10),
             59 => Ok(TextureFormat::AstcRgba12x12),
-            _ => Err(Error::EngineError(
-                format!("Unidentified texture format: {}", n),
-            )),
+            _ => Err(Error::EngineError(format!(
+                "Unidentified texture format: {}",
+                n
+            ))),
         }
     }
 
     pub fn pixel_format(&self) -> PixelFormat {
         match self {
-            &TextureFormat::RGB24 => PixelFormat::RGB,
-            &TextureFormat::ARGB32 => PixelFormat::ARGB,
-            &TextureFormat::RGB565 => PixelFormat::RGB16,
-            &TextureFormat::Alpha8 => PixelFormat::A,
-            &TextureFormat::RGBA4444 => PixelFormat::RGBA4B,
-            &TextureFormat::ARGB4444 => PixelFormat::ARGB4B,
+            TextureFormat::RGB24 => PixelFormat::RGB,
+            TextureFormat::ARGB32 => PixelFormat::ARGB,
+            TextureFormat::RGB565 => PixelFormat::RGB16,
+            TextureFormat::Alpha8 => PixelFormat::A,
+            TextureFormat::RGBA4444 => PixelFormat::RGBA4B,
+            TextureFormat::ARGB4444 => PixelFormat::ARGB4B,
             _ => PixelFormat::RGBA,
         }
     }

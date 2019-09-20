@@ -6,14 +6,14 @@
  */
 
 use binaryreader::Teller;
-use std::io::{Read, Seek, BufReader, Cursor};
+use binaryreader::{Endianness, ReadExtras};
+use enums::{get_runtime_platform, RuntimePlatform};
 use error::{Error, Result};
-use binaryreader::{ReadExtras, Endianness};
-use enums::{RuntimePlatform, get_runtime_platform};
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::fmt;
 use resources;
+use std::collections::HashMap;
+use std::fmt;
+use std::io::{BufReader, Cursor, Read, Seek};
+use std::sync::Arc;
 
 pub struct TypeMetadata {
     generator_version: String,
@@ -27,9 +27,8 @@ impl TypeMetadata {
     pub fn new<R: Read + Seek + Teller>(
         buffer: &mut R,
         format: u32,
-        endianness: &Endianness,
+        endianness: Endianness,
     ) -> Result<TypeMetadata> {
-
         let mut result = TypeMetadata {
             generator_version: String::new(),
             target_platform: RuntimePlatform::OSXEditor,
@@ -56,19 +55,14 @@ impl TypeMetadata {
                             // old system.  class_id of -1 is taken to mean that
                             // the MonoBehaviour base class was serialized; that
                             // shouldn't happen, but it's easy to account for.
-                            class_id = -2 - (script_id as i32);
+                            class_id = (-2 - (script_id)).into();
                         } else {
                             class_id = -1;
                         }
                     }
                 }
 
-                let hash_size;
-                if class_id < 0 {
-                    hash_size = 0x20;
-                } else {
-                    hash_size = 0x10;
-                }
+                let hash_size = if class_id < 0 { 0x20 } else { 0x10 };
                 let mut hash = vec![0; hash_size];
                 try!(buffer.read_exact(hash.as_mut_slice()));
 
@@ -76,17 +70,16 @@ impl TypeMetadata {
                 result.hashes.insert(class_id, hash);
 
                 if has_type_trees {
-                    let tree = try!(TypeNode::new(format, buffer, &endianness));
-                    result.type_trees.insert(class_id as i64, Arc::new(tree));
+                    let tree = try!(TypeNode::new(format, buffer, endianness));
+                    result.type_trees.insert(class_id.into(), Arc::new(tree));
                 }
             }
-
         } else {
             let num_fields = try!(buffer.read_u32(endianness));
             for _ in 0..num_fields {
                 let class_id = try!(buffer.read_i32(endianness));
-                let tree = try!(TypeNode::new(format, buffer, &endianness));
-                result.type_trees.insert(class_id as i64, Arc::new(tree));
+                let tree = try!(TypeNode::new(format, buffer, endianness));
+                result.type_trees.insert(class_id.into(), Arc::new(tree));
             }
         }
 
@@ -122,20 +115,19 @@ impl TypeNode {
     pub fn new<R: Read + Seek + Teller>(
         format: u32,
         buffer: &mut R,
-        endianness: &Endianness,
+        endianness: Endianness,
     ) -> Result<TypeNode> {
         if format == 10 || format >= 12 {
-            return TypeNode::load_blob(buffer, endianness);
+            TypeNode::load_blob(buffer, endianness)
         } else {
-            return TypeNode::load_old(buffer, endianness);
-        };
+            TypeNode::load_old(buffer, endianness)
+        }
     }
 
     fn load_blob<R: Read + Seek + Teller>(
         buffer: &mut R,
-        endianness: &Endianness,
+        endianness: Endianness,
     ) -> Result<TypeNode> {
-
         let num_nodes = try!(buffer.read_u32(endianness));
         let buffer_bytes = try!(buffer.read_u32(endianness));
 
@@ -154,47 +146,47 @@ impl TypeNode {
         for _ in 0..num_nodes {
             // create root element
             let _ = try!(buf.read_i16(endianness)); // version, unused
-            let depth = try!(buf.read_u8());
+            let depth = try!(buf.read_u8()).into();
 
             let is_array = try!(buf.read_u8()) == 1;
             let type_name = try!(TypeNode::get_string_from_buffer(
-                &buffer_bytes,
+                buffer_bytes,
                 &stringbuffer_data,
-                &(try!(buf.read_i32(endianness))),
+                try!(buf.read_i32(endianness)),
             ));
             let field_name = try!(TypeNode::get_string_from_buffer(
-                &buffer_bytes,
+                buffer_bytes,
                 &stringbuffer_data,
-                &(try!(buf.read_i32(endianness))),
+                try!(buf.read_i32(endianness)),
             ));
             let size = try!(buf.read_i32(endianness));
             let index = try!(buf.read_u32(endianness));
             let flags = try!(buf.read_i32(endianness));
 
             let node = TypeNode {
-                type_name: type_name,
-                field_name: field_name,
-                size: size,
-                index: index,
-                is_array: is_array,
-                flags: flags,
+                type_name,
+                field_name,
+                size,
+                index,
+                is_array,
+                flags,
                 children: Vec::new(),
             };
 
-            if depth as i16 > current_depth {
+            if depth > current_depth {
                 parents.push(node);
-                current_depth = depth as i16;
+                current_depth = depth;
                 continue;
             }
 
             // find parent of current node
-            for _ in 0..((current_depth - depth as i16) + 1) {
+            for _ in 0..=(current_depth - depth) {
                 let count = parents.len();
                 let lastnode = parents.remove(count - 1);
                 parents.last_mut().unwrap().children.push(lastnode);
             }
             parents.push(node);
-            current_depth = depth as i16;
+            current_depth = depth;
         }
 
         // unwrap remaining nodes
@@ -216,7 +208,7 @@ impl TypeNode {
 
     fn load_old<R: Read + Seek + Teller>(
         buffer: &mut R,
-        endianness: &Endianness,
+        endianness: Endianness,
     ) -> Result<TypeNode> {
         let type_name = try!(buffer.read_string());
         let field_name = try!(buffer.read_string());
@@ -227,12 +219,12 @@ impl TypeNode {
         let flags = try!(buffer.read_i32(endianness));
 
         let mut result = TypeNode {
-            type_name: type_name,
-            field_name: field_name,
-            size: size,
-            index: index,
-            is_array: is_array,
-            flags: flags,
+            type_name,
+            field_name,
+            size,
+            index,
+            is_array,
+            flags,
             children: Vec::new(),
         };
 
@@ -245,18 +237,14 @@ impl TypeNode {
         Ok(result)
     }
 
-    fn get_string_from_buffer(
-        buffer_bytes: &u32,
-        buffer: &Vec<u8>,
-        offset: &i32,
-    ) -> Result<String> {
-        let string_data: &Vec<u8>;
-        let mut off: usize = *offset as usize;
+    fn get_string_from_buffer(buffer_bytes: u32, buffer: &[u8], offset: i32) -> Result<String> {
+        let string_data: &[u8];
+        let mut off: usize = offset as usize;
 
-        if *offset < 0 {
-            off &= 0x7fffffff;
+        if offset < 0 {
+            off &= 0x7fff_ffff;
             string_data = try!(resources::default_type_strings());
-        } else if *offset < *buffer_bytes as i32 {
+        } else if offset < buffer_bytes as i32 {
             string_data = buffer;
         } else {
             return Ok(String::new());
@@ -266,7 +254,7 @@ impl TypeNode {
         let mut k = right.split(|b| *b == 0 as u8);
         let z = k.next().unwrap();
         let result = String::from_utf8(z.to_vec()).unwrap();
-        return Ok(result);
+        Ok(result)
     }
 
     pub fn post_align(&self) -> bool {
@@ -279,12 +267,7 @@ impl fmt::Display for TypeNode {
         write!(
             f,
             "<{} {} (size={}, index={}, is_array={}, flags={})>",
-            self.type_name,
-            self.field_name,
-            self.size,
-            self.index,
-            self.is_array,
-            self.flags
+            self.type_name, self.field_name, self.size, self.index, self.is_array, self.flags
         )
     }
 }

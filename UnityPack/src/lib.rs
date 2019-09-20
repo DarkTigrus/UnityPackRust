@@ -18,28 +18,28 @@ extern crate uuid;
 #[macro_use]
 extern crate lazy_static;
 
-pub mod error;
-pub mod assetbundle;
 pub mod asset;
-pub mod object;
+pub mod assetbundle;
 mod binaryreader;
-mod typetree;
-mod enums;
-mod resources;
-pub mod unitypack_c;
-mod extras;
 pub mod engine;
+mod enums;
+pub mod error;
+mod extras;
+pub mod object;
+mod resources;
+mod typetree;
+pub mod unitypack_c;
 
 #[cfg(test)]
 mod tests {
 
     use assetbundle::*;
-    use object::*;
-    use engine::texture::IntoTexture2D;
-    use engine::text::IntoTextAsset;
-    use engine::font::IntoFontDef;
     use engine::font::IntoFont;
+    use engine::font::IntoFontDef;
     use engine::mesh::IntoMesh;
+    use engine::text::IntoTextAsset;
+    use engine::texture::IntoTexture2D;
+    use object::*;
 
     #[test]
     fn test_load_texture2d() {
@@ -50,8 +50,7 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
@@ -66,7 +65,8 @@ mod tests {
 
         for obj in objects.values() {
             if obj.type_name == "Texture2D" {
-                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                let engine_object = obj
+                    .read_signature(asset, &mut asset_bundle.signature)
                     .unwrap();
                 let texture = match engine_object {
                     ObjectValue::EngineObject(engine_object) => {
@@ -101,12 +101,11 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
-        assert!(asset_bundle.assets.len() > 0);
+        assert!(asset_bundle.assets.is_empty(), false);
 
         for i in 0..asset_bundle.assets.len() {
             asset_bundle.resolve_asset(i).unwrap();
@@ -122,19 +121,19 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
-        assert!(asset_bundle.assets.len() > 0);
+        assert!(asset_bundle.assets.is_empty(), false);
         asset_bundle.resolve_asset(0).unwrap();
         let asset = &asset_bundle.assets[0];
         let objects = &asset.objects;
 
         for obj in objects.values() {
             if obj.type_name == "TextAsset" {
-                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                let engine_object = obj
+                    .read_signature(asset, &mut asset_bundle.signature)
                     .unwrap();
                 let _ = match engine_object {
                     ObjectValue::EngineObject(engine_object) => {
@@ -158,12 +157,11 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
-        assert!(asset_bundle.assets.len() > 0);
+        assert!(asset_bundle.assets.is_empty(), false);
         asset_bundle.resolve_asset(0).unwrap();
 
         let asset = &asset_bundle.assets[0];
@@ -171,7 +169,8 @@ mod tests {
 
         for obj in objects.values() {
             if obj.type_name == "FontDef" {
-                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                let engine_object = obj
+                    .read_signature(asset, &mut asset_bundle.signature)
                     .unwrap();
 
                 let _ = match engine_object {
@@ -195,12 +194,11 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
-        assert!(asset_bundle.assets.len() > 0);
+        assert!(asset_bundle.assets.is_empty(), false);
         asset_bundle.resolve_asset(0).unwrap();
 
         let asset = &asset_bundle.assets[0];
@@ -208,7 +206,8 @@ mod tests {
 
         for obj in objects.values() {
             if obj.type_name == "Font" {
-                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                let engine_object = obj
+                    .read_signature(asset, &mut asset_bundle.signature)
                     .unwrap();
 
                 let _ = match engine_object {
@@ -230,12 +229,11 @@ mod tests {
             Err(err) => {
                 println!("Failed to load assetbundle from {}", input_file);
                 println!("Error: {:?}", err);
-                assert!(false);
-                return;
+                panic!();
             }
         };
 
-        assert!(asset_bundle.assets.len() > 0);
+        assert!(asset_bundle.assets.is_empty(), false);
         asset_bundle.resolve_asset(0).unwrap();
 
         let asset = &asset_bundle.assets[0];
@@ -243,7 +241,8 @@ mod tests {
 
         for obj in objects.values() {
             if obj.type_name == "Mesh" {
-                let engine_object = obj.read_signature(asset, &mut asset_bundle.signature)
+                let engine_object = obj
+                    .read_signature(asset, &mut asset_bundle.signature)
                     .unwrap();
 
                 let _ = match engine_object {

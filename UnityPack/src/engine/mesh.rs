@@ -6,11 +6,11 @@
  */
 
 use super::EngineObject;
-use object::ToByteVec;
-use error::{Error, Result};
-use object::ObjectValue;
-use extras::containers::OrderedMap;
 use engine::object::Object;
+use error::{Error, Result};
+use extras::containers::OrderedMap;
+use object::ObjectValue;
+use object::ToByteVec;
 
 pub trait IntoMesh {
     fn to_mesh(self) -> Result<Mesh>;

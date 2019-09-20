@@ -5,12 +5,12 @@
  * All rights reserved 2017
  */
 
-use error::{Error, Result};
 use super::EngineObject;
-use object::AssetPointer;
-use object::ObjectValue::ObjectPointer;
 use asset::Asset;
 use engine::object::Object;
+use error::{Error, Result};
+use object::AssetPointer;
+use object::ObjectValue::ObjectPointer;
 use object::ToByteVec;
 
 pub trait IntoFontDef {
@@ -34,13 +34,13 @@ impl IntoFontDef for EngineObject {
             font_size_modifier: tryGet!(self.map, "m_FontSizeModifier").to_f32()?,
             font: {
                 match tryGet!(self.map, "m_Font") {
-                    &ObjectPointer(ref object_pointer) => AssetPointer {
-                        file_name: asset.get_file_by_id(&object_pointer.file_id)?,
+                    ObjectPointer(ref object_pointer) => AssetPointer {
+                        file_name: asset.get_file_by_id(object_pointer.file_id)?,
                         path_id: object_pointer.path_id,
                     },
                     _ => {
                         return Err(Error::EngineError(
-                            format!("Value is not of ObjectPointer type"),
+                            "Value is not of ObjectPointer type".to_string(),
                         ));
                     }
                 }
