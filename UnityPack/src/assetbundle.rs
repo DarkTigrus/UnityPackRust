@@ -368,17 +368,17 @@ where
         }
     }
 
+    fn in_current_block(&self, pos: u64) -> bool {
+        if self.current_block_idx < 0 {
+            return false;
+        }
+        let end = self.current_block_offset
+            + u64::from(self.blocks[self.current_block_idx as usize].uncompressed_size);
+        pos >= self.current_block_offset && pos < end
+    }
+
     fn seek_to_block(&mut self, pos: u64) -> io::Result<()> {
-        // check if we are already in the corresponding block
-        // TODO fix mess
-        /*if (self.current_block_idx < 0)
-        || ((pos < self.current_block_offset)
-            || (pos
-                > (self.current_block_offset
-                    + u64::from(
-                        self.blocks[self.current_block_idx as usize].uncompressed_size,
-                    ))))*/
-        {
+        if !self.in_current_block(pos) {
             let mut base_offset: u64 = 0;
             let mut offset = 0;
             let mut found = false;
