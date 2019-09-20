@@ -18,12 +18,10 @@ use std::io::{BufReader, Cursor, ErrorKind, Read, Seek, SeekFrom};
 
 fn decompress_data(data: &[u8], compression_type: &CompressionType) -> Result<Vec<u8>> {
     match *compression_type {
-        CompressionType::LZ4 | CompressionType::LZ4HC => {
-            match lz4_compress::decompress(data) {
-                Err(err) => Err(Error::LZ4DecompressionError(Box::new(err))),
-                Ok(buf) => Ok(buf),
-            }
-        }
+        CompressionType::LZ4 | CompressionType::LZ4HC => match lz4_compress::decompress(data) {
+            Err(err) => Err(Error::LZ4DecompressionError(Box::new(err))),
+            Ok(buf) => Ok(buf),
+        },
         CompressionType::LZMA | CompressionType::LZHAM => match lzma::decompress(data) {
             Ok(data) => Ok(data),
             Err(err) => Err(Error::LZMADecompressionError(Box::new(err))),
@@ -372,13 +370,14 @@ where
 
     fn seek_to_block(&mut self, pos: u64) -> io::Result<()> {
         // check if we are already in the corresponding block
-        if (self.current_block_idx < 0)
-            || ((pos < self.current_block_offset)
-                || (pos
-                    > (self.current_block_offset
-                        + u64::from(
-                            self.blocks[self.current_block_idx as usize].uncompressed_size,
-                        ))))
+        // TODO fix mess
+        /*if (self.current_block_idx < 0)
+        || ((pos < self.current_block_offset)
+            || (pos
+                > (self.current_block_offset
+                    + u64::from(
+                        self.blocks[self.current_block_idx as usize].uncompressed_size,
+                    ))))*/
         {
             let mut base_offset: u64 = 0;
             let mut offset = 0;
@@ -436,17 +435,13 @@ where
             let remaining = (current_buffer_len as u64) - current_buffer_cursor;
             let read_size = cmp::min(size, remaining as usize);
 
-            if read_size == 0 {
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "Error while reading block storeage",
-                ));
+            if read_size != 0 {
+                let part = &self.current_buffer[(current_buffer_cursor as usize)
+                    ..((current_buffer_cursor as usize) + read_size)];
+                size -= read_size;
+                self.virtual_cursor += read_size as u64;
+                bytes.extend(part);
             }
-            let part = &self.current_buffer
-                [(current_buffer_cursor as usize)..((current_buffer_cursor as usize) + read_size)];
-            size -= read_size;
-            self.virtual_cursor += read_size as u64;
-            bytes.extend(part);
         }
         buf.clone_from_slice(&bytes);
         Ok(bytes.len())
